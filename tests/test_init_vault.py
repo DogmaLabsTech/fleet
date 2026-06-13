@@ -1,7 +1,14 @@
+import argparse
 import importlib.util
 from pathlib import Path
 
 import fleet
+
+
+def _args(**kw):
+    base = dict(rest=[], name=None, dir=None, here=False, use=None, yes=True)
+    base.update(kw)
+    return argparse.Namespace(**base)
 
 
 def _denylist():
@@ -59,3 +66,70 @@ def test_main_init_vault_command(tmp_path, monkeypatch):
     fleet.main()
     assert (tmp_path / "CLAUDE.md").is_file()
     assert (tmp_path / "wiki" / "index.md").is_file()
+
+
+# ---------------------------------------------------------------- onboarding
+
+def test_scaffold_substitutes_vault_name(tmp_path):
+    fleet.scaffold_vault(str(tmp_path), name="Acme Brain")
+    claude = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Acme Brain" in claude
+    assert "Acme Brain" in (tmp_path / "wiki" / "index.md").read_text(encoding="utf-8")
+    # no template token survives anywhere in the scaffold
+    for p in tmp_path.rglob("*"):
+        if p.is_file():
+            assert "{{VAULT_NAME}}" not in p.read_text(encoding="utf-8", errors="replace")
+
+
+def test_claude_md_has_first_run_onboarding_trigger(tmp_path):
+    fleet.scaffold_vault(str(tmp_path), name="X")
+    claude = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "First run" in claude and "onboarding.md" in claude
+
+
+def test_scaffold_writes_onboarding_brief(tmp_path):
+    fleet.scaffold_vault(str(tmp_path), name="Acme Brain", use="track the sales pipeline")
+    ob = tmp_path / "onboarding.md"
+    assert ob.is_file()
+    text = ob.read_text(encoding="utf-8")
+    assert "Acme Brain" in text
+    assert "track the sales pipeline" in text
+    assert "status: pending" in text
+    assert "connect to" in text.lower()   # connections checklist item
+    assert "skill set" in text.lower()     # skill recommendation item
+    assert "AI CLIs detected" in text      # machine scan recorded
+
+
+def test_onboarding_md_is_no_clobber(tmp_path):
+    fleet.scaffold_vault(str(tmp_path), name="X")
+    first = (tmp_path / "onboarding.md").read_text(encoding="utf-8")
+    fleet.scaffold_vault(str(tmp_path), name="X")   # re-run must not overwrite
+    assert (tmp_path / "onboarding.md").read_text(encoding="utf-8") == first
+
+
+def test_detect_clis_returns_known_labels():
+    labels = fleet._detect_clis()
+    assert isinstance(labels, list)
+    assert all(l in {"Claude Code", "Codex CLI", "Gemini CLI", "Qwen Code"} for l in labels)
+
+
+def test_onboarding_inputs_positional_derives_name(tmp_path):
+    name, dest, use = fleet._onboarding_inputs(_args(rest=[str(tmp_path)]))
+    assert name == tmp_path.name and dest == str(tmp_path) and use is None
+
+
+def test_onboarding_inputs_honors_flags(tmp_path):
+    name, dest, use = fleet._onboarding_inputs(
+        _args(name="Acme Brain", dir=str(tmp_path), use="notes"))
+    assert name == "Acme Brain" and dest == str(tmp_path) and use == "notes"
+
+
+def test_onboarding_inputs_here_flag():
+    name, dest, _ = fleet._onboarding_inputs(_args(here=True, name="X"))
+    assert dest == "." and name == "X"
+
+
+def test_onboarding_inputs_noninteractive_never_blocks():
+    # no flags, no TTY, yes=True: must resolve without prompting (would hang CI)
+    name, dest, use = fleet._onboarding_inputs(_args())
+    assert dest == "." and name and use is None

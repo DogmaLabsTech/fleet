@@ -64,21 +64,84 @@ def _obsidian_status():
         return "not found"
 
 
-def scaffold_vault(dest=".", open_after=False):
-    """Copy the generic knowledge-vault skeleton into dest, no-clobber per file.
+def _slug(name):
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "my-vault"
 
-    If dest/CLAUDE.md already exists, the vault contract is written to
-    wiki/_vault-contract.md instead so we never overwrite the adopter's own rules.
-    Ships zero third-party code; the self-building engine is a plugin the adopter
-    installs separately (printed below)."""
+
+def _name_from_path(dest):
+    return Path(dest).resolve().name or "my-vault"
+
+
+def _detect_clis():
+    """Which terminal AI CLIs are installed on this machine (best-effort).
+    Reuses the session-monitor provider detectors, so it never guesses."""
+    found = []
+    try:
+        from engine import providers
+        for pid in ("claude", "codex", "gemini", "qwen"):
+            p = providers.get(pid)
+            try:
+                if p and p.detect():
+                    found.append(p.LABEL)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return found
+
+
+def _onboarding_md(name, use, detected):
+    clis = ", ".join(detected) if detected else "none detected"
+    use_line = use.strip() if use else "_(not provided — ask the owner)_"
+    return f"""---
+type: note
+title: Onboarding
+status: pending
+domain: general
+---
+
+# Onboarding — {name}
+
+**Status:** `pending` → set to `complete` when this checklist is done, so it never runs again.
+
+The owner ran `fleet init-vault` to create **{name}**. Finish setting it up before
+other work.
+
+- **Vault name:** {name}
+- **Planned use:** {use_line}
+- **AI CLIs detected on this machine:** {clis}
+
+## Do this on first run
+
+- [ ] Confirm the vault's name and the owner's goals for it.
+- [ ] Ask what this vault needs to **connect to** — MCP servers, APIs, repos, data
+      sources — and record each as a page under `wiki/`.
+- [ ] Recommend a **skill set** for how they work, and how to enable it (the
+      self-building engine is `/plugin marketplace add AgriciDaniel/claude-obsidian`).
+- [ ] Create the `wiki/<domain>/` folders that match their domains/projects.
+- [ ] Seed `wiki/overview.md` with a one-paragraph briefing of what this vault is for.
+- [ ] Set this file's **status to `complete`**.
+"""
+
+
+def scaffold_vault(dest=".", name=None, use=None, open_after=False):
+    """Scaffold a named knowledge vault into dest, no-clobber per file.
+
+    Substitutes the vault NAME into the skeleton, then writes an onboarding.md
+    brief (name, planned use, detected CLIs + a build-out checklist) that the
+    scaffolded CLAUDE.md tells the AI to act on at first launch — the hybrid
+    half of onboarding. If dest/CLAUDE.md already exists and isn't ours, our
+    contract goes to wiki/_vault-contract.md so we never overwrite the adopter's.
+    Ships zero third-party code; the self-building engine is a plugin (printed)."""
     dest = Path(dest)
+    name = name or _name_from_path(dest)
     written, skipped, adopter_claude = [], [], False
     for src in sorted(VAULT_SKELETON.rglob("*")):
         if not src.is_file():
             continue
         rel = src.relative_to(VAULT_SKELETON)
         target = dest / rel
-        content = src.read_text(encoding="utf-8")
+        content = src.read_text(encoding="utf-8").replace("{{VAULT_NAME}}", name)
         is_claude = rel.as_posix() == "CLAUDE.md"
         if is_claude and target.exists():
             # If the existing CLAUDE.md is ours (re-run), skip it. If it's the
@@ -95,11 +158,19 @@ def scaffold_vault(dest=".", open_after=False):
         target.write_text(content, encoding="utf-8")
         written.append(target.relative_to(dest).as_posix())
 
-    print(f"Vault scaffolded at {dest}  ({len(written)} written, {len(skipped)} skipped).")
+    onboarding = dest / "onboarding.md"
+    if onboarding.exists():
+        skipped.append("onboarding.md")
+    else:
+        onboarding.write_text(_onboarding_md(name, use, _detect_clis()), encoding="utf-8")
+        written.append("onboarding.md")
+
+    print(f"Created {name} at {dest}  ({len(written)} written, {len(skipped)} skipped).")
     if adopter_claude:
         print("  note: you already have a CLAUDE.md - merge the routing block from "
               "wiki/_vault-contract.md")
-    print("Your AI is now pointed at it: run `claude` here and it will use wiki/ as memory.")
+    print("\nNext: launch your AI in this folder — it reads onboarding.md and finishes setup.")
+    print(f"    cd {dest} && claude        (or codex / gemini / qwen)")
     print("\nTo make the vault self-building + searchable, install the engine (MIT, by AgriciDaniel):")
     print("    /plugin marketplace add AgriciDaniel/claude-obsidian")
     print(f"\nObsidian (the GUI) is optional - the vault is just markdown. [{_obsidian_status()}]")
@@ -239,6 +310,53 @@ def render_table(data):
     return "\n".join(out)
 
 
+# ---------------------------------------------------------------- onboarding inputs
+
+def _prompt(question, default=None):
+    try:
+        ans = input(question).strip()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""
+    return ans or default
+
+
+def _onboarding_inputs(args):
+    """Resolve (name, dest, use) for init-vault. Prompts only on a real TTY and
+    only for values not supplied by flags/positional — so tests, CI, and scripts
+    never block. Location defaults under the user's home path."""
+    try:
+        interactive = sys.stdin.isatty() and not args.yes
+    except (ValueError, AttributeError):
+        interactive = False
+    positional = args.rest[0] if args.rest else None
+
+    name = args.name or (_name_from_path(positional) if positional else None)
+    if not name and interactive:
+        while not name:
+            name = _prompt("Name your vault (e.g. 'Acme Brain'): ")
+
+    if args.here:
+        dest = "."
+    elif args.dir:
+        dest = args.dir
+    elif positional:
+        dest = positional
+    elif interactive:
+        default_dir = str(Path.home() / _slug(name or "my-vault"))
+        dest = _prompt(f"Where to create it [{default_dir}]: ", default_dir)
+    else:
+        dest = "."
+
+    if not name:
+        name = _name_from_path(dest)
+
+    use = args.use
+    if use is None and interactive:
+        use = _prompt("In one line, how will you use it? (optional): ") or None
+
+    return name, dest, use
+
+
 # ---------------------------------------------------------------- entry point
 
 def main():
@@ -254,6 +372,11 @@ def main():
     parser.add_argument("--repo", help="target repo for `init` (default: current dir)")
     parser.add_argument("--open", action="store_true",
                         help="for `init-vault`: open the scaffolded folder afterwards")
+    parser.add_argument("--name", help="for `init-vault`: name your vault (skips the prompt)")
+    parser.add_argument("--dir", help="for `init-vault`: where to create it")
+    parser.add_argument("--here", action="store_true", help="for `init-vault`: use the current directory")
+    parser.add_argument("--use", help="for `init-vault`: one line on how you'll use it")
+    parser.add_argument("--yes", action="store_true", help="for `init-vault`: skip prompts, use defaults")
     parser.add_argument("--serve", action="store_true", help="run the live dashboard server")
     parser.add_argument("--port", type=int, default=PORT_DEFAULT)
     parser.add_argument("--json", action="store_true", help="dump collector output")
@@ -268,7 +391,8 @@ def main():
         init_repo(args.repo or ".")
         return
     if args.command == "init-vault":
-        scaffold_vault(args.rest[0] if args.rest else ".", open_after=args.open)
+        name, dest, use = _onboarding_inputs(args)
+        scaffold_vault(dest, name=name, use=use, open_after=args.open)
         return
     if args.command == "projects":
         from engine import roster

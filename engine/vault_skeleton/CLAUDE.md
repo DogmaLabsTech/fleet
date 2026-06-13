@@ -1,8 +1,22 @@
-# CLAUDE.md — your AI's memory vault
+# {{VAULT_NAME}} — your AI's memory vault
 
-This folder is a **knowledge vault**: long-term memory your AI reads and writes as it
-works. When an agent that reads this file runs here, it should treat `wiki/` as the
-source of truth for what you have learned, decided, and built.
+This folder is **{{VAULT_NAME}}**, a knowledge vault: long-term memory your AI reads and
+writes as it works. When an agent that reads this file runs here, it should treat
+`wiki/` as the source of truth for what you have learned, decided, and built.
+
+## First run — finish setting up this vault
+
+If `onboarding.md` exists at the vault root and its status is **not** `complete`, do the
+onboarding before anything else:
+
+1. Read `onboarding.md` — it records this vault's name, how the owner plans to use it,
+   and which AI CLIs are installed on this machine.
+2. Interview the owner briefly: what domains/projects this vault covers, what it needs
+   to connect to (MCP servers, APIs, repos), and which skills would help most.
+3. Build it out — create the `wiki/<domain>/` folders that fit their work, recommend a
+   skill set (and how to enable it), and record the connections as `wiki/` pages.
+4. Tick the checklist in `onboarding.md` and set its status to `complete` so this step
+   never runs again.
 
 ## How your AI should use this vault
 

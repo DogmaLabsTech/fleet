@@ -116,15 +116,19 @@ at its center.
 ## Optional: give the agent a memory vault
 
 Separate from the progress sidecar — and just as optional — Fleet can scaffold a
-generic **knowledge vault** for your AI to use as long-term memory:
+**named knowledge vault** for your AI to use as long-term memory:
 
 ```bash
-fleet init-vault
+fleet init-vault                       # names it + asks where (defaults under your home)
+fleet init-vault --name "Acme Brain"   # non-interactive
 ```
 
-This writes a `CLAUDE.md` that points your agent at a `wiki/` folder, plus a skeleton
-and note templates — all generic, none of it required by Mission Control. It makes the
-agent *use* the vault; to make the vault self-building and searchable, install the MIT
+This is a hybrid onboarding: the CLI names the vault, defaults its location under your
+home, scans for the AI CLIs you have installed, and scaffolds a `wiki/` skeleton (name
+baked in) plus an `onboarding.md` brief. The scaffolded `CLAUDE.md` then has your agent
+read that brief on first launch and finish setup with you — none of it required by
+Mission Control. It makes the agent *use* the vault; to make the vault self-building and
+searchable, install the MIT
 [`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian) plugin by
 AgriciDaniel. Fleet ships the skeleton, never the engine. See the README's "Give your
 AI a memory" section for the full flow.

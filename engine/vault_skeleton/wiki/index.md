@@ -8,7 +8,7 @@ status: active
 domain: general
 ---
 
-# Index
+# Index — {{VAULT_NAME}}
 
 Master catalog of this vault — one line per page. Your AI updates this whenever it
 adds or renames a page.

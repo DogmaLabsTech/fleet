@@ -73,19 +73,22 @@ switcher.
 
 ## Give your AI a memory
 
-Fleet can also scaffold a **knowledge vault** — a plain-markdown folder your coding
-agent reads and writes as long-term memory. From the repo (or any folder) you want
-your AI to remember:
+Fleet can also scaffold a **named knowledge vault** — a plain-markdown folder your
+coding agent reads and writes as long-term memory — and walk you through setup:
 
 ```bash
-fleet init-vault          # scaffold the current folder as a vault
-fleet init-vault ./brain  # …or a subfolder
+fleet init-vault                       # names it + asks where (defaults under your home)
+fleet init-vault --name "Acme Brain"   # skip the prompts
 ```
 
-It writes a `CLAUDE.md` that **points your AI at the vault**, plus a `wiki/` skeleton
-(index, log, conventions, a seed domain folder) and a few note templates — no-clobber,
-and it never overwrites an existing `CLAUDE.md` (the contract goes to a sidecar to
-merge). Launch `claude` in that folder and your agent treats `wiki/` as its memory.
+`init-vault` is a **hybrid onboarding**. The CLI asks you to name the vault and pick a
+location (default `~/<name>`), scans for the AI CLIs you have installed, then scaffolds
+the `wiki/` skeleton with your name baked in — plus an `onboarding.md` brief. The first
+time you launch your AI in the folder, its `CLAUDE.md` tells it to read that brief and
+finish setup *with you*: interview you on how you'll use the vault, what it should
+connect to (MCP servers, APIs, repos), and which skills fit — then build out the `wiki/`
+structure to match. It's no-clobber, and never overwrites an existing `CLAUDE.md` (the
+contract goes to a sidecar to merge).
 
 That makes the AI *use* the vault. To make the vault **self-building and searchable**
 — auto-ingest sources, lint links, local retrieval — install the engine it's designed
