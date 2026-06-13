@@ -68,6 +68,17 @@ def project_of(cwd):
     return re.split(r"[\\/]", (cwd or "").rstrip("\\/"))[-1] or "?"
 
 
+def iso_ms(ts):
+    """ISO-8601 timestamp -> unix ms, or None."""
+    from datetime import datetime
+    if not isinstance(ts, str):
+        return None
+    try:
+        return int(datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000)
+    except ValueError:
+        return None
+
+
 def infer_status(updated_ms, now_ms):
     """(status, live) for a provider with no status file, from transcript freshness."""
     if now_ms - updated_ms <= ACTIVE_WINDOW_MS:
