@@ -1,13 +1,13 @@
-# Fleet — Claude Code session monitor
+# Fleet — terminal AI session monitor
 
 [![ci](https://github.com/DogmaLabsTech/fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/DogmaLabsTech/fleet/actions/workflows/ci.yml)
 &nbsp;![python](https://img.shields.io/badge/python-3.9%2B-blue)
 &nbsp;![license](https://img.shields.io/badge/license-MIT-green)
 &nbsp;![local-only](https://img.shields.io/badge/network-zero%20egress-success)
 
-**One window over every running Claude Code session — and an honest ring per repo
-that won't pretend work is done when it isn't.** 100% local; nothing leaves your
-machine.
+**One window over every running terminal AI coding session — Claude Code, Codex,
+Gemini, and Qwen — and an honest ring per repo that won't pretend work is done
+when it isn't.** 100% local; nothing leaves your machine.
 
 ![Fleet Mission Control — honest progress rings](docs/demo-rings.gif)
 
@@ -15,14 +15,17 @@ machine.
 artifact backs it) / **attested** (a cited receipt) / **uncited** (no receipt) —
 and flagged **contradicted** when a `done` claim's receipt is missing.*
 
-See, supervise, and inspect every running Claude Code session from one window —
-the live table, what each session has in its head, which files it touched, and how
-its work connects to your Obsidian vault.
+See, supervise, and inspect every running AI coding session from one window — the
+live table, what each session has in its head, which files it touched, and how its
+work connects to your Obsidian vault. Claude Code is supported in full; **Codex,
+Gemini CLI, and Qwen Code** are read through provider adapters (see
+[`docs/PROVIDERS.md`](docs/PROVIDERS.md)).
 
 ## 100% local. Nothing leaves your machine.
 
-Fleet reads **only your own local files** — Claude Code's session state and
-transcripts under `~/.claude`, and (optionally) an Obsidian vault you point it at.
+Fleet reads **only your own local files** — each tool's own session state and
+transcripts (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`), and (optionally) an
+Obsidian vault you point it at.
 
 - The server binds **`127.0.0.1` only**, with Host-header and CSRF guards.
 - **No network egress. No telemetry. No analytics.** Fonts are self-hosted.
@@ -99,6 +102,25 @@ engine, and Obsidian's desktop GUI, are optional installs you control; retrieval
 defaults to local BM25, so no model download is required and nothing leaves your
 machine.
 
+## Providers — more than Claude Code
+
+Fleet reads each terminal AI agent through a small **provider adapter**. Any
+detected tool is included automatically; pin a set with `FLEET_PROVIDERS=claude,codex`.
+
+| Provider | Reads | Live status |
+|---|---|---|
+| **Claude Code** | `~/.claude/sessions` + transcripts | **verified** (live PID + busy/waiting/idle) |
+| **Qwen Code** | `~/.qwen/projects/**/chats` + `*.runtime.json` | **verified** (real PID from the runtime sidecar) |
+| **Codex CLI** | `~/.codex/sessions/**/rollout-*.jsonl` | *inferred* from recent activity |
+| **Gemini CLI** | `~/.gemini/tmp/**/chats/session-*.jsonl` | *inferred* from recent activity |
+
+**An honesty line, not a feature gap:** only Claude Code and Qwen write a live
+status/PID file, so only they can report *verified* running/waiting state. Codex
+and Gemini expose an after-the-fact transcript, so Fleet marks those sessions
+`~live (inferred)` from how recently they were written — never dressed up as a
+precise busy state it can't actually know. Adding a provider is one small module;
+see [`docs/PROVIDERS.md`](docs/PROVIDERS.md).
+
 ## Install
 
 ```bash
@@ -127,15 +149,21 @@ on Linux install a Qt or GTK backend, or just use `fleet dash`).
 
 ## Caveat
 
-Fleet reads Claude Code's **internal, undocumented** on-disk state. It's
+Fleet reads each agent's **internal, undocumented** on-disk state. It's
 best-effort and fail-soft: a format change in a future CLI release may show less
-detail until Fleet catches up, but it will not crash. Issues and PRs welcome.
+detail until Fleet catches up, but it will not crash. (Gemini's log format in
+particular is mid-migration, so its adapter is the most provisional.) Issues and
+PRs welcome.
 
 ## Configuration
 
 | Env var | Meaning |
 |---|---|
+| `FLEET_PROVIDERS` | Comma-separated providers to read (e.g. `claude,codex`); default: every detected tool |
 | `FLEET_CLAUDE_DIR` | Override `~/.claude` (default) |
+| `FLEET_CODEX_DIR` | Override `~/.codex` (also honors `CODEX_HOME`) |
+| `FLEET_GEMINI_DIR` | Override `~/.gemini` |
+| `FLEET_QWEN_DIR` | Override `~/.qwen` (also honors `QWEN_HOME`) |
 | `FLEET_VAULT_DIR` | Your Obsidian vault root (enables the VAULT WEB tab) |
 | `FLEET_OBSIDIAN_JSON` | Override the Obsidian registry path |
 | `FLEET_PROJECTS_JSON` | Mission Control project pins (`{slug: repo_path}`); defaults to your per-OS config dir |

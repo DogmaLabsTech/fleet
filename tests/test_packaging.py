@@ -61,3 +61,19 @@ def test_wheel_ships_ui_assets(tmp_path):
     shipped = {n[len(UI_PREFIX):] for n in names if UI_PREFIX in n and n[len(UI_PREFIX):]}
     missing = UI_EXPECTED - shipped
     assert not missing, f"wheel does not ship UI assets (fleet dash would be blank): {sorted(missing)}"
+
+
+# A manually-listed `packages` does not recurse subpackages — engine.providers
+# must be listed explicitly or `from .providers import base` breaks on install.
+PROVIDER_MODULES = {
+    "engine/providers/__init__.py", "engine/providers/base.py",
+    "engine/providers/claude.py", "engine/providers/codex.py",
+    "engine/providers/gemini.py", "engine/providers/qwen.py",
+    "engine/providers/_geminish.py",
+}
+
+
+def test_wheel_ships_providers_package(tmp_path):
+    names = set(_wheel_names(tmp_path))
+    missing = PROVIDER_MODULES - names
+    assert not missing, f"wheel does not ship the providers package (collector import breaks): {sorted(missing)}"

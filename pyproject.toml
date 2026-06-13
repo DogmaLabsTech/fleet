@@ -34,7 +34,9 @@ app = ["pywebview>=4.4"]
 fleet = "fleet:main"
 
 [tool.setuptools]
-packages = ["engine"]
+# Subpackages must be listed explicitly — setuptools does NOT recurse a manually
+# specified `packages` list, so omitting engine.providers ships a broken collector.
+packages = ["engine", "engine.providers"]
 py-modules = ["fleet", "app"]
 # engine/ui and engine/vault_skeleton (incl. dotfiles + binary fonts) ship via
 # `graft` in MANIFEST.in; glob package-data would silently drop dotfiles/binaries.
