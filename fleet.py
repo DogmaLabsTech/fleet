@@ -13,12 +13,11 @@ Usage:
 """
 
 import argparse
-import ctypes
 import json
+import os
 import re
 import shutil
 import sys
-from ctypes import wintypes
 from datetime import datetime
 
 from engine.collector import collect
@@ -34,15 +33,18 @@ ACCENT = "\x1b[38;2;255;130;0m"
 GREEN = "\x1b[38;2;74;222;128m"
 AMBER = "\x1b[38;2;251;191;36m"
 
-_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
 
 def enable_ansi():
+    if os.name != "nt":
+        return  # POSIX terminals interpret VT natively
+    import ctypes
+    from ctypes import wintypes
     try:
-        handle = _k32.GetStdHandle(-11)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.GetStdHandle(-11)
         mode = wintypes.DWORD()
-        if _k32.GetConsoleMode(handle, ctypes.byref(mode)):
-            _k32.SetConsoleMode(handle, mode.value | 0x0004)
+        if k32.GetConsoleMode(handle, ctypes.byref(mode)):
+            k32.SetConsoleMode(handle, mode.value | 0x0004)
     except Exception:
         pass  # Windows Terminal interprets VT regardless
 
@@ -149,6 +151,8 @@ def render_table(data):
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Code session fleet monitor")
+    parser.add_argument("command", nargs="?", choices=["dash", "app"],
+                        help="dash: browser dashboard server; app: native desktop window")
     parser.add_argument("--serve", action="store_true", help="run the live dashboard server")
     parser.add_argument("--port", type=int, default=PORT_DEFAULT)
     parser.add_argument("--json", action="store_true", help="dump collector output")
@@ -162,7 +166,11 @@ def main():
     if args.json:
         print(json.dumps(collect(), indent=2))
         return
-    if args.serve:
+    if args.command == "app":
+        import app as _app
+        _app.main()
+        return
+    if args.command == "dash" or args.serve:
         from engine.server import serve
         serve(args.port)
         return

@@ -1,5 +1,6 @@
 """Fleet desktop app: engine server in a thread + native WebView2 window."""
 
+import errno
 import socket
 import sys
 import threading
@@ -24,7 +25,8 @@ def main():
         srv = make_server(PREFERRED_PORT)
         port = PREFERRED_PORT
     except OSError as e:
-        if getattr(e, "winerror", None) != 10048:
+        in_use = getattr(e, "winerror", None) == 10048 or e.errno == errno.EADDRINUSE
+        if not in_use:
             raise
         # fleet dash server already running - reuse it; confirm it answers
         port = PREFERRED_PORT

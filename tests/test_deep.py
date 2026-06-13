@@ -7,17 +7,17 @@ FIXTURE = Path(__file__).parent / "fixtures" / "transcript.jsonl"
 
 
 def parse():
-    return deep.parse_full(FIXTURE, {"cwd": "C:\\HUB\\Knowledge"})
+    return deep.parse_full(FIXTURE, {"cwd": "C:\\projects\\my-vault"})
 
 
 def test_head_files_buckets():
     head = parse()["head"]
     reads = [f["path"] for f in head["files"]["read"]]
-    assert "C:\\HUB\\Knowledge\\wiki\\shared\\Quality Bar.md" in reads
+    assert "C:\\projects\\my-vault\\wiki\\shared\\Quality Bar.md" in reads
     edits = [f["path"] for f in head["files"]["edited"]]
-    assert "C:\\HUB\\Knowledge\\wiki\\projects\\Kitchen Compass.md" in edits
+    assert "C:\\projects\\my-vault\\wiki\\projects\\Kitchen Compass.md" in edits
     writes = [f["path"] for f in head["files"]["written"]]
-    assert "C:\\HUB\\tools\\fleet\\out.txt" in writes
+    assert "C:\\projects\\tool\\out.txt" in writes
     assert head["files"]["searched"][0]["path"].startswith("widget")
 
 

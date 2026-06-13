@@ -1,0 +1,18 @@
+/* Two themes via CSS custom properties. Default = neutral. */
+:root,
+:root[data-theme="neutral"] {
+  --bg: #14151a;
+  --ink: #e8e9ed;
+  --dim: #9aa0ac;
+  --accent: #5b9dff;
+  --panel: #1c1e25;
+  --border: #2a2d36;
+}
+:root[data-theme="dogma"] {
+  --bg: #1a1817;
+  --ink: #f4eee5;
+  --dim: #9c9a96;
+  --accent: #ff8200;
+  --panel: #221f1d;
+  --border: #332f2c;
+}

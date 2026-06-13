@@ -98,3 +98,33 @@ def test_open_obsidian_reports_launch_failure(fixture_vault, monkeypatch):
     monkeypatch.setattr(actions.subprocess, "Popen", boom)
     res = actions.open_obsidian("wiki/x.md")
     assert res["ok"] is False
+
+
+import signal
+import sys
+
+from engine import actions, collector
+
+
+def test_kill_posix_sends_sigterm_then_reports_ended(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    # identity check passes, then process is gone after SIGTERM
+    monkeypatch.setattr(collector, "proc_creation_unix_ms", lambda pid: None)
+    monkeypatch.setattr(collector, "pid_matches_session", lambda pid, s: True)
+    sent = {}
+    monkeypatch.setattr(actions.os, "kill", lambda pid, sig: sent.setdefault("sig", sig))
+    # creation==None on first identity read would refuse; force the ordered reads:
+    reads = iter([1000, None])  # alive for identity, dead after signal
+    monkeypatch.setattr(collector, "proc_creation_unix_ms", lambda pid: next(reads))
+    res = actions.kill_session(4321, 1000)
+    assert res["ok"] is True
+    assert sent["sig"] == signal.SIGTERM
+
+
+def test_open_path_uses_open_in_os(monkeypatch, tmp_path):
+    f = tmp_path / "x.txt"
+    f.write_text("hi")
+    called = {}
+    monkeypatch.setattr(actions.oscompat, "open_in_os", lambda t: called.setdefault("t", t))
+    res = actions.open_path(str(f))
+    assert res["ok"] is True and called["t"] == str(f)

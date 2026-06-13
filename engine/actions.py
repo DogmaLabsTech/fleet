@@ -1,50 +1,58 @@
 """Full-control actions. Kill re-validates PID identity at action time.
-Spawn actions validate the slug + roster membership and resolve repo_root
-server-side before launching (the request body never supplies a path)."""
+The only actions are a non-destructive open (file/folder/Obsidian page, handed
+off to the OS) and ending a session (confirm-gated, PID-reuse guarded)."""
 
 import os
-import re
+import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from . import collector, roster, spawn, vault
-
-SLUG_RE = re.compile(r"^[a-z0-9-]{1,40}$")
+from . import collector, oscompat, vault
 
 
 def _launch(target):
-    """Separated for testability - tests monkeypatch this."""
-    os.startfile(target)  # noqa: S606 - deliberate local launcher
+    """Separated for testability - tests monkeypatch oscompat.open_in_os."""
+    oscompat.open_in_os(target)
 
 
 def kill_session(pid, started_at_ms):
     creation = collector.proc_creation_unix_ms(pid)
     if creation == -1:
         return {"ok": False, "message": f"pid {pid} identity unverifiable (access denied) - "
-                                        "refused; run fleet elevated to manage this session"}
+                                        "refused; run fleet with more privilege to manage it"}
     if not collector.pid_matches_session(pid, started_at_ms):
         return {"ok": False, "message": f"pid {pid} not alive or identity mismatch - refused"}
     try:
-        graceful = subprocess.run(["taskkill", "/PID", str(pid)],
-                                  capture_output=True, timeout=10)
-        if graceful.returncode == 0:
-            deadline = time.time() + 3
-            while time.time() < deadline:
-                if collector.proc_creation_unix_ms(pid) is None:
-                    return {"ok": True, "message": f"session pid {pid} ended"}
-                time.sleep(0.25)
-        # console processes refuse graceful termination - escalate, taking the tree
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
-                       capture_output=True, timeout=10)
-        deadline = time.time() + 1
-        while time.time() < deadline:
-            if collector.proc_creation_unix_ms(pid) is None:
+        if sys.platform == "win32":
+            graceful = subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True, timeout=10)
+            if graceful.returncode == 0 and _wait_gone(pid, 3):
+                return {"ok": True, "message": f"session pid {pid} ended"}
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=10)
+            if _wait_gone(pid, 1):
                 return {"ok": True, "message": f"session pid {pid} force-ended (tree)"}
-            time.sleep(0.1)
-        return {"ok": False, "message": f"pid {pid} survived taskkill /F"}
-    except (OSError, subprocess.SubprocessError) as e:
+            return {"ok": False, "message": f"pid {pid} survived taskkill /F"}
+        # POSIX: SIGTERM, grace, then SIGKILL. os.kill(pid, 0) is a safe liveness
+        # probe off-Windows (the Windows hazard where it terminates the target does not apply).
+        os.kill(pid, signal.SIGTERM)
+        if _wait_gone(pid, 3):
+            return {"ok": True, "message": f"session pid {pid} ended"}
+        os.kill(pid, signal.SIGKILL)
+        if _wait_gone(pid, 1):
+            return {"ok": True, "message": f"session pid {pid} force-killed"}
+        return {"ok": False, "message": f"pid {pid} survived SIGKILL"}
+    except (OSError, ValueError) as e:
         return {"ok": False, "message": f"kill failed: {e}"}
+
+
+def _wait_gone(pid, seconds):
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if collector.proc_creation_unix_ms(pid) is None:
+            return True
+        time.sleep(0.1)
+    return False
 
 
 def open_obsidian(rel):
@@ -73,34 +81,10 @@ def open_path(path):
         return {"ok": False, "message": f"open failed: {e}"}
 
 
-def _gated_spawn(payload, kind):
-    """Server-side gate for every spawn: regex-validate the slug, require roster
-    membership, resolve repo_root from the roster (NOT the body), and for agent
-    dispatch require the repo to actually have a dedicated agent."""
-    slug = str(payload.get("slug") or "")
-    if not SLUG_RE.match(slug):
-        return {"ok": False, "message": "invalid slug"}
-    entry = roster.resolve(slug)
-    if entry is None:
-        return {"ok": False, "message": f"unknown project: {slug}"}
-    repo_root = entry.get("repo_root")  # authoritative; payload['repo_root'] is ignored
-    if not repo_root or not Path(repo_root).exists():
-        return {"ok": False, "message": f"no repo on disk for {slug}"}
-    if kind == "agent" and not entry.get("has_agent"):
-        return {"ok": False, "message": f"{slug} has no dedicated agent"}
-    return spawn.launch(kind, slug, repo_root)
-
-
 def dispatch(payload, server=None):
     if not isinstance(payload, dict):
         return {"ok": False, "message": "payload must be a json object"}
     action = payload.get("action")
-    if action == "spawn-visual-sweep":
-        return _gated_spawn(payload, "visual-sweep")
-    if action == "spawn-agent":
-        return _gated_spawn(payload, "agent")
-    if action == "spawn-relay":
-        return _gated_spawn(payload, "relay")
     if action == "kill":
         try:
             return kill_session(int(payload["pid"]), int(payload["started_at"]))

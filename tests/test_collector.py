@@ -5,9 +5,9 @@ import engine.collector as collector
 
 
 def test_cwd_to_slug_known_mappings():
-    assert collector.cwd_to_slug(r"C:\HUB\Knowledge") == "C--HUB-Knowledge"
-    assert collector.cwd_to_slug(r"C:\HUB\DogmaLabs_OS") == "C--HUB-DogmaLabs-OS"
-    assert collector.cwd_to_slug(r"C:\Users\dogma\.claude") == "C--Users-dogma--claude"
+    assert collector.cwd_to_slug(r"C:\projects\my-vault") == "C--projects-my-vault"
+    assert collector.cwd_to_slug(r"C:\projects\notes_os") == "C--projects-notes-os"
+    assert collector.cwd_to_slug(r"C:\Users\alice\.claude") == "C--Users-alice--claude"
 
 
 def test_parse_tail_extracts_fields():

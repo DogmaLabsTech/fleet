@@ -13,21 +13,21 @@ def fixture_claude_dir(tmp_path, monkeypatch):
     """Synthetic ~/.claude with one dead-PID session + its transcript."""
     claude = tmp_path / "claude"
     sessions = claude / "sessions"
-    proj = claude / "projects" / "C--HUB-Knowledge"
+    proj = claude / "projects" / "C--projects-my-vault"
     sessions.mkdir(parents=True)
     proj.mkdir(parents=True)
     now_ms = int(time.time() * 1000)
     (sessions / "999999.json").write_text(json.dumps({
         "pid": 999999,  # 999999 is not a multiple of 4, so it can never be a valid Windows PID; OpenProcess fails with error 87, never error 5
-        "sessionId": "fix-1", "cwd": "C:\\HUB\\Knowledge",
+        "sessionId": "fix-1", "cwd": "C:\\projects\\my-vault",
         "status": "busy", "kind": "interactive", "version": "2.1.174",
         "startedAt": now_ms - 60_000, "updatedAt": now_ms - 5_000,
     }), encoding="utf-8")
     # Generate a transcript using the tmp vault path so /vault route resolves pages.
     # test_deep.py uses the static fixture directly and is unaffected.
-    vault_path = str(tmp_path / "Knowledge").replace("\\", "\\\\")
+    vault_path = str(tmp_path / "my-vault").replace("\\", "\\\\")
     static = (FIXTURES / "transcript.jsonl").read_text(encoding="utf-8")
-    dynamic = static.replace("C:\\\\HUB\\\\Knowledge", vault_path)
+    dynamic = static.replace("C:\\\\projects\\\\my-vault", vault_path)
     (proj / "fix-1.jsonl").write_text(dynamic, encoding="utf-8")
     (claude / "history.jsonl").write_text("", encoding="utf-8")
     monkeypatch.setenv("FLEET_CLAUDE_DIR", str(claude))
@@ -37,7 +37,7 @@ def fixture_claude_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def fixture_vault(tmp_path, monkeypatch):
     """Synthetic Obsidian vault + registry json."""
-    vault = tmp_path / "Knowledge"
+    vault = tmp_path / "my-vault"
     wiki = vault / "wiki" / "shared"
     wiki.mkdir(parents=True)
     (wiki / "Quality Bar.md").write_text(

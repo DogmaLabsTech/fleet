@@ -1,0 +1,18 @@
+{"type":"user","sessionId":"fix-1","cwd":"C:\\projects\\my-vault","timestamp":"2026-06-11T10:00:00Z","message":{"role":"user","content":"build the widget"}}
+{"type":"ai-title","aiTitle":"Build the widget","sessionId":"fix-1","timestamp":"2026-06-11T10:00:01Z"}
+{"type":"assistant","sessionId":"fix-1","gitBranch":"main","timestamp":"2026-06-11T10:00:02Z","message":{"role":"assistant","model":"claude-fable-5","usage":{"input_tokens":10,"cache_read_input_tokens":5000,"cache_creation_input_tokens":100},"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"C:\\projects\\my-vault\\wiki\\shared\\Quality Bar.md"}}]}}
+{"type":"user","sessionId":"fix-1","isMeta":true,"timestamp":"2026-06-11T10:00:03Z","message":{"role":"user","content":"<system-reminder>noise</system-reminder>"}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:04Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"C:\\projects\\my-vault\\wiki\\projects\\Kitchen Compass.md","old_string":"a","new_string":"b"}}]}}
+{"type":"user","sessionId":"fix-1","timestamp":"2026-06-11T10:00:05Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:06Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"t3","name":"Write","input":{"file_path":"C:\\projects\\tool\\out.txt","content":"x"}}]}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:07Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"t4","name":"Grep","input":{"pattern":"widget","path":"C:\\projects\\my-vault\\wiki"}}]}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:08Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"t5","name":"Skill","input":{"skill":"superpowers:brainstorming"}}]}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:09Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"t6","name":"Agent","input":{"subagent_type":"Explore","description":"Map the data dir","prompt":"..."}}]}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:10Z","message":{"role":"assistant","model":"claude-fable-5","content":[{"type":"tool_use","id":"t7","name":"mcp__alpaca__get_clock","input":{}}]}}
+{"type":"user","sessionId":"fix-1","timestamp":"2026-06-11T10:00:11Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t7","is_error":true,"content":"connection refused"}]}}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:12Z","message":{"role":"assistant","model":"claude-fable-5","usage":{"input_tokens":2,"cache_read_input_tokens":120000,"cache_creation_input_tokens":50},"content":[{"type":"text","text":"Widget built and verified."}]}}
+{"type":"last-prompt","lastPrompt":"build the widget","sessionId":"fix-1","timestamp":"2026-06-11T10:00:13Z"}
+{"type":"file-history-snapshot","sessionId":"fix-1","timestamp":"2026-06-11T10:00:14Z","snapshot":{"x":1}}
+{"type":"summary","summary":"Widget session","sessionId":"fix-1","timestamp":"2026-06-11T10:00:15Z"}
+{"type":"assistant","sessionId":"fix-1","timestamp":"2026-06-11T10:00:16Z","message":{"role":"assistant","model":"<synthetic>","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"API Error: connection lost"}]}}
+{"type":"user","sessionId":"fix-1","timestamp":"2026-06-11T10:00:17Z","message":{"role":"user","content":"<command-name>/clear</command-name>"}}

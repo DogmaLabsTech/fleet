@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fleet-cc"
+version = "0.1.0"
+description = "See, supervise, and inspect every running Claude Code session from one local window."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["psutil>=5.9"]
+
+[project.optional-dependencies]
+app = ["pywebview>=4.4"]
+
+[project.scripts]
+fleet = "fleet:main"
+
+[tool.setuptools]
+packages = ["engine"]
+py-modules = ["fleet", "app"]
+
+[tool.setuptools.package-data]
+"*" = ["ui/*"]

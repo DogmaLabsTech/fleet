@@ -131,7 +131,7 @@ def test_post_with_body_to_unknown_path_gets_404(live_server):
 
 def test_session_transcript_missing_fail_soft(live_server, fixture_claude_dir):
     # delete the transcript out from under the route
-    t = next((fixture_claude_dir / "projects" / "C--HUB-Knowledge").glob("*.jsonl"))
+    t = next((fixture_claude_dir / "projects" / "C--projects-my-vault").glob("*.jsonl"))
     t.unlink()
     status, body = get(live_server + "/session/fix-1")
     d = json.loads(body)

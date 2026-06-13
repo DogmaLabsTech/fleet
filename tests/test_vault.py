@@ -104,3 +104,17 @@ def test_duplicate_stem_shortest_path_wins(fixture_vault):
     (deep_dir / "Quality Bar.md").write_text("dup", encoding="utf-8")
     index = vault._stem_index()
     assert index["quality bar"] == "wiki/shared/Quality Bar.md"
+
+
+from engine import vault
+
+
+def test_vault_dir_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("FLEET_VAULT_DIR", str(tmp_path))
+    assert vault.vault_dir() == tmp_path
+
+
+def test_vault_dir_none_without_env_or_single_vault(monkeypatch):
+    monkeypatch.delenv("FLEET_VAULT_DIR", raising=False)
+    monkeypatch.setattr(vault, "_registered_vaults", lambda: {})
+    assert vault.vault_dir() is None

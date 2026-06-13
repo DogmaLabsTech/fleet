@@ -13,12 +13,10 @@ function fmtTs(ts) {
 }
 function shortModel(m) { return (m || "?").replace(/^claude-/, ""); }
 function areaOf(p) {
+  // Group files by their top-level project folder, derived from the path itself.
   p = p || "";
-  if (/^C:\\HUB\\Knowledge\\/i.test(p)) return "Knowledge";
-  if (/^C:\\HUB\\DogmaLabs_OS\\/i.test(p)) return "DogmaLabs_OS";
-  const st = /^C:\\HUB\\Studio\\(?:Projects\\)?([^\\]+)\\/i.exec(p);
-  if (st) return "Studio/" + st[1];
-  return "other";
+  const m = /[\\/]([^\\/]+)[\\/][^\\/]+[\\/]/.exec(p);
+  return m ? m[1] : "other";
 }
 function toast(msg, ok) { const t = el("div", "toast" + (ok ? "" : " err"), msg); $("toasts").appendChild(t); setTimeout(() => t.remove(), 4500); }
 async function post(payload) {

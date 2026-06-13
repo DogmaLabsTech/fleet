@@ -6,38 +6,60 @@ import re
 import urllib.parse
 from pathlib import Path
 
+from . import oscompat
+
 WIKILINK_RE = re.compile(r"\[\[([^\]\|#\n]+)")
 NODE_CAP = 60
 
 
-def vault_dir() -> Path:
-    return Path(os.environ.get("FLEET_VAULT_DIR", r"C:\HUB\Knowledge"))
-
-
 def _registry_path() -> Path:
-    default = Path(os.environ.get("APPDATA", "")) / "obsidian" / "obsidian.json"
-    return Path(os.environ.get("FLEET_OBSIDIAN_JSON", str(default)))
+    override = os.environ.get("FLEET_OBSIDIAN_JSON")
+    return Path(override) if override else oscompat.obsidian_registry_path()
+
+
+def _registered_vaults():
+    """{path: id} from Obsidian's registry, or {} if unreadable."""
+    try:
+        reg = json.loads(_registry_path().read_text(encoding="utf-8"))
+        return {str(info.get("path", "")): vid
+                for vid, info in (reg.get("vaults") or {}).items() if info.get("path")}
+    except (OSError, ValueError):
+        return {}
+
+
+def vault_dir():
+    """The vault root: FLEET_VAULT_DIR if set; else the sole registered Obsidian
+    vault if there is exactly one; else None (VAULT WEB shows an empty-state)."""
+    override = os.environ.get("FLEET_VAULT_DIR")
+    if override:
+        return Path(override)
+    vaults = _registered_vaults()
+    if len(vaults) == 1:
+        return Path(next(iter(vaults)))
+    return None
 
 
 def vault_id():
-    """Obsidian's id for the vault whose path matches vault_dir(). None if unregistered."""
-    try:
-        reg = json.loads(_registry_path().read_text(encoding="utf-8"))
-        target = str(vault_dir()).rstrip("\\/").lower()
-        for vid, info in (reg.get("vaults") or {}).items():
-            if str(info.get("path", "")).rstrip("\\/").lower() == target:
-                return vid
-    except (OSError, ValueError):
-        pass
+    """Obsidian's id for the vault whose path matches vault_dir(). None if unknown."""
+    root = vault_dir()
+    if root is None:
+        return None
+    target = str(root).rstrip("\\/").lower()
+    for path, vid in _registered_vaults().items():
+        if str(path).rstrip("\\/").lower() == target:
+            return vid
     return None
 
 
 def page_rel(path):
     """Vault-relative posix path for .md files inside the vault, else None."""
+    root = vault_dir()
+    if root is None:
+        return None
     if any(ord(c) < 32 for c in str(path)):
         return None
     try:
-        rel = Path(path).resolve().relative_to(vault_dir().resolve())
+        rel = Path(path).resolve().relative_to(root.resolve())
     except (ValueError, OSError):
         return None
     if any(part.startswith(".") for part in rel.parts):
@@ -46,7 +68,8 @@ def page_rel(path):
 
 
 def obsidian_uri(rel):
-    vid = vault_id() or vault_dir().name
+    root = vault_dir()
+    vid = vault_id() or (root.name if root is not None else "")
     if not rel:  # vault-only deep link (used by the empty-state "open vault" button)
         return f"obsidian://open?vault={urllib.parse.quote(vid)}"
     file = rel[:-3] if rel.lower().endswith(".md") else rel
@@ -56,9 +79,12 @@ def obsidian_uri(rel):
 def _stem_index():
     """page-name (lower) -> vault-relative path; shortest path wins on duplicates."""
     index = {}
+    root = vault_dir()
+    if root is None:
+        return index
     try:
-        for p in vault_dir().rglob("*.md"):
-            rel_path = p.relative_to(vault_dir())
+        for p in root.rglob("*.md"):
+            rel_path = p.relative_to(root)
             if any(part.startswith(".") for part in rel_path.parts):
                 continue
             rel = rel_path.as_posix()
@@ -72,6 +98,9 @@ def _stem_index():
 
 def build_graph(files):
     """files = deep.parse_full(...)['files']. Returns {nodes, edges, overflow, warnings}."""
+    root = vault_dir()
+    if root is None:
+        return {"nodes": [], "edges": [], "overflow": 0, "warnings": []}
     warnings = []
     touched = {}  # rel -> "edited" | "read"   (edited wins)
     for bucket, touch in (("edited", "edited"), ("written", "edited"), ("read", "read")):
@@ -94,7 +123,7 @@ def build_graph(files):
     skipped = set()
     for rel in list(touched):
         try:
-            text = (vault_dir() / rel).read_text(encoding="utf-8", errors="replace")
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
         except (OSError, ValueError) as e:
             warnings.append(f"unreadable: {rel} ({e})")
             continue

@@ -1,8 +1,12 @@
 @import url('/fonts/fonts.css');  /* self-hosted — no CDN egress (privacy line; works offline) */
 :root{
-  --bg-main:#1a1817; --bg-card:#0d0c0c; --bg-surface:#141211;
-  --ink:#f4eee5; --dim:#9ca3af; --accent:#FF8200; --accent-soft:rgba(255,130,0,.1);
-  --line:#2a2827; --green:#4ade80; --red:#f87171; --amber:#fbbf24;
+  /* surfaces derive from the active theme tokens (theme.css) so the palette
+     swaps at runtime; --green/--red/--amber stay fixed status colors. */
+  --bg-main:var(--bg); --bg-card:var(--panel); --bg-surface:var(--panel);
+  --accent-soft:color-mix(in srgb,var(--accent) 10%,transparent);
+  --accent-glow:color-mix(in srgb,var(--accent) 50%,transparent);
+  --line:var(--border); --line-hi:color-mix(in srgb,var(--border) 55%,var(--ink));
+  --green:#4ade80; --red:#f87171; --amber:#fbbf24;
   /* control-surface material */
   --hl:inset 0 1px 0 rgba(255,255,255,.04);
   --z1:0 1px 2px rgba(0,0,0,.4);
@@ -30,7 +34,7 @@ body{background:var(--bg-main);color:var(--ink);font-family:'Inter',system-ui,sa
 .tl-note .badge{background:var(--bg-surface);color:var(--dim)}
 .tl-now .badge{background:var(--accent);color:#000}
 .scard{background:var(--bg-card);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:9px;padding:.6rem .7rem;margin-bottom:.5rem;cursor:pointer}
-.scard:hover{border-color:#3a3837}
+.scard:hover{border-color:var(--line-hi)}
 .scard.selected{outline:1px solid var(--accent)}
 .scard.busy{border-left-color:var(--accent)}
 .scard.waiting{border-left-color:var(--amber);animation:pulse 1.6s infinite}
@@ -88,7 +92,7 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 
 /* ================= MISSION CONTROL ================= */
 #mission{display:flex;flex-direction:column;height:100vh;
-  background:radial-gradient(1200px 600px at 80% -10%,rgba(255,130,0,.05),transparent 60%),var(--bg-main)}
+  background:radial-gradient(1200px 600px at 80% -10%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 60%),var(--bg-main)}
 #mission-head{display:flex;align-items:center;gap:1rem;padding:1.1rem 1.6rem;border-bottom:1px solid var(--line);box-shadow:var(--z1)}
 #mission-head h1{font-family:'Space Grotesk',sans-serif;font-size:1.15rem;letter-spacing:.08em;text-transform:uppercase}
 #mission-head .mc-sub{color:var(--accent);font-weight:700}
@@ -97,6 +101,9 @@ button.danger:hover{background:rgba(248,113,113,.12)}
   border-color:var(--line);color:var(--ink)}
 .switch:hover{border-color:var(--accent);color:var(--accent)}
 #rail-head .switch{margin:0 0 .6rem;display:inline-block}
+.theme-toggle{font-size:.95rem;line-height:1;min-height:34px;min-width:34px;padding:.25rem .5rem;
+  border-color:var(--line);color:var(--dim)}
+.theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
 
 #spawn-strip{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;padding:.55rem 1.6rem;border-bottom:1px solid var(--line);background:var(--bg-surface)}
 .ss-label{font-family:'JetBrains Mono',monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.1em}
@@ -104,7 +111,7 @@ button.danger:hover{background:rgba(248,113,113,.12)}
   background:var(--bg-card);border:1px solid var(--line);border-radius:99px;padding:.18rem .6rem}
 .ss-chip .ss-slug{color:var(--ink)}
 .ss-chip .ss-st{color:var(--dim)}
-.ss-running{border-color:rgba(255,130,0,.5)}
+.ss-running{border-color:var(--accent-glow)}
 .ss-running .ss-st{color:var(--accent)}
 .ss-finished{opacity:.6}
 
@@ -112,11 +119,11 @@ button.danger:hover{background:rgba(248,113,113,.12)}
   grid-template-columns:repeat(auto-fill,minmax(300px,1fr));align-content:start;align-items:start}
 
 .pcard{display:flex;gap:1rem;align-items:flex-start;min-height:150px;padding:1.1rem;border-radius:16px;
-  background:linear-gradient(180deg,#151312,#100f0e);border:1px solid var(--line);
+  background:linear-gradient(180deg,var(--panel),var(--bg));border:1px solid var(--line);
   box-shadow:var(--hl),var(--z1);cursor:pointer;transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s var(--ease)}
-.pcard:hover{transform:translateY(-3px);box-shadow:var(--hl),var(--z2);border-color:#3a3837}
-.pcard.active{border-color:rgba(255,130,0,.45);
-  background:radial-gradient(420px 160px at 0% 0%,rgba(255,130,0,.07),transparent 60%),linear-gradient(180deg,#171312,#100f0e)}
+.pcard:hover{transform:translateY(-3px);box-shadow:var(--hl),var(--z2);border-color:var(--line-hi)}
+.pcard.active{border-color:color-mix(in srgb,var(--accent) 45%,transparent);
+  background:radial-gradient(420px 160px at 0% 0%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 60%),linear-gradient(180deg,var(--panel),var(--bg))}
 .pc-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.55rem}
 .pc-top{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
 .pc-title{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1rem;letter-spacing:.01em}
@@ -124,9 +131,9 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 .src-tracked{color:var(--green)}
 .pc-badges{display:flex;flex-wrap:wrap;gap:.35rem}
 .pbadge{font-family:'JetBrains Mono',monospace;font-size:.64rem;padding:.14rem .5rem;border-radius:99px;border:1px solid var(--line);background:var(--bg-surface);color:var(--dim)}
-.pb-busy{border-color:rgba(255,130,0,.45);color:var(--accent)}
+.pb-busy{border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}
 .pb-idle{color:var(--ink)}
-.pb-relay{border-color:rgba(255,130,0,.5);color:var(--accent);animation:pulse 1.6s infinite}
+.pb-relay{border-color:var(--accent-glow);color:var(--accent);animation:pulse 1.6s infinite}
 .pb-crew{color:var(--ink)}
 .pb-goal{color:#8ab4ff;border-color:rgba(138,180,255,.3)}
 .pb-visual{color:var(--green);border-color:rgba(74,222,128,.3)}
@@ -146,14 +153,14 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 .lg-attested{color:var(--accent);opacity:.5}
 .lg-uncited{color:var(--amber)}
 .ring{flex:none;display:block}
-.ring-track{fill:none;stroke:#3a3837;stroke-width:6}
+.ring-track{fill:none;stroke:var(--line-hi);stroke-width:6}
 .ring-prog{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round;
   transform:rotate(-90deg);transform-origin:center;transform-box:fill-box;
-  transition:stroke-dashoffset 1s var(--ease);filter:drop-shadow(0 0 5px rgba(255,130,0,.5))}
+  transition:stroke-dashoffset 1s var(--ease);filter:drop-shadow(0 0 5px var(--accent-glow))}
 /* derived = provisional: the neon still reads (warm accent-tint), just a softer glow than a tracked manifest */
-.ring-derived .ring-prog{stroke:#f4923a;filter:drop-shadow(0 0 3px rgba(255,130,0,.28))}
+.ring-derived .ring-prog{stroke:color-mix(in srgb,var(--accent) 75%,var(--ink));filter:drop-shadow(0 0 3px color-mix(in srgb,var(--accent) 28%,transparent))}
 /* two-tone honesty arc: verified earns the full neon, attested is dimmer, in-progress faintest */
-.ring-prog.seg-verified{stroke:var(--accent);stroke-linecap:butt;filter:drop-shadow(0 0 5px rgba(255,130,0,.6))}
+.ring-prog.seg-verified{stroke:var(--accent);stroke-linecap:butt;filter:drop-shadow(0 0 5px color-mix(in srgb,var(--accent) 60%,transparent))}
 .ring-prog.seg-attested{stroke:var(--accent);stroke-opacity:.42;stroke-linecap:butt;filter:none}
 .ring-prog.seg-inprog{stroke:var(--accent);stroke-opacity:.22;stroke-linecap:butt;filter:none}
 .ring-num{fill:var(--ink);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;
@@ -163,7 +170,7 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 #drawer{position:fixed;inset:0;z-index:55}
 #drawer-scrim{position:absolute;inset:0;background:rgba(0,0,0,.55)}
 #drawer-panel{position:absolute;top:0;right:0;height:100%;width:min(440px,92vw);
-  background:linear-gradient(180deg,#161413,#100f0e);border-left:1px solid var(--line);
+  background:linear-gradient(180deg,var(--panel),var(--bg));border-left:1px solid var(--line);
   box-shadow:var(--z3);display:flex;flex-direction:column;overflow-y:auto;
   animation:slideIn .24s var(--ease)}
 @keyframes slideIn{from{transform:translateX(30px);opacity:.4}to{transform:none;opacity:1}}
@@ -174,8 +181,8 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 #dr-close:hover{color:var(--ink)}
 #dr-actions{display:flex;gap:.5rem;flex-wrap:wrap;padding:1rem 1.3rem;border-bottom:1px solid var(--line)}
 .dr-act{font-family:'JetBrains Mono',monospace;font-size:.72rem;padding:.45rem .8rem;border-radius:9px;
-  border:1px solid rgba(255,130,0,.35);color:var(--accent);background:var(--accent-soft)}
-.dr-act:hover{background:rgba(255,130,0,.18)}
+  border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);color:var(--accent);background:var(--accent-soft)}
+.dr-act:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
 .dr-act:active{transform:translateY(1px)}
 #dr-milestones,#dr-team{padding:1.1rem 1.3rem}
 #dr-team{border-top:1px solid var(--line)}
@@ -192,7 +199,7 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 .ms-status{font-family:'JetBrains Mono',monospace;font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;
   padding:.08rem .4rem;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
 .ms-done .ms-status{color:var(--green);border-color:rgba(74,222,128,.35)}
-.ms-in-progress .ms-status{color:var(--accent);border-color:rgba(255,130,0,.4)}
+.ms-in-progress .ms-status{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
 .ms-weight{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:.62rem}
 .ms-conf{font-size:.82rem;line-height:1;flex:none}
 .mc-verified{color:var(--accent)}
@@ -220,7 +227,7 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 #mission-counts.alert{color:var(--amber);font-weight:600}
 .pb-waiting{color:#000;background:var(--amber);border-color:var(--amber);font-weight:700;animation:pulse 1.4s infinite}
 .pcard.needs-you{border-color:var(--amber);
-  background:radial-gradient(420px 160px at 0% 0%,rgba(251,191,36,.1),transparent 60%),linear-gradient(180deg,#17150f,#100f0e);
+  background:radial-gradient(420px 160px at 0% 0%,rgba(251,191,36,.1),transparent 60%),linear-gradient(180deg,var(--panel),var(--bg));
   box-shadow:var(--hl),0 0 0 1px rgba(251,191,36,.25),var(--z1)}
 
 /* ---------- B2 spawn log panel ---------- */
@@ -229,18 +236,18 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 #spawnlog{position:fixed;inset:0;z-index:58;display:flex;align-items:center;justify-content:center}
 #sl-scrim{position:absolute;inset:0;background:rgba(0,0,0,.6)}
 #sl-box{position:relative;width:min(760px,92vw);max-height:80vh;display:flex;flex-direction:column;
-  background:linear-gradient(180deg,#141312,#0d0c0c);border:1px solid var(--line);border-radius:14px;
+  background:linear-gradient(180deg,var(--panel),var(--bg));border:1px solid var(--line);border-radius:14px;
   box-shadow:var(--z3);overflow:hidden}
 #sl-head{display:flex;align-items:center;gap:.6rem;padding:.8rem 1.1rem;border-bottom:1px solid var(--line)}
 #sl-title{font-size:.78rem;color:var(--accent)}
 #sl-close{margin-left:auto;background:none;border:none;color:var(--dim);font-size:1.3rem;line-height:1;padding:.1rem .4rem}
 #sl-close:hover{color:var(--ink)}
 #sl-body{flex:1;overflow:auto;margin:0;padding:1rem 1.1rem;font-size:.74rem;line-height:1.55;
-  color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;background:#0a0908}
+  color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg)}
 
 /* ---------- C micro-interactions ---------- */
 .pcard:active{transform:translateY(-1px)}
-.pcard:hover .ring-prog{filter:drop-shadow(0 0 8px rgba(255,130,0,.7))}
+.pcard:hover .ring-prog{filter:drop-shadow(0 0 8px color-mix(in srgb,var(--accent) 70%,transparent))}
 .dr-act:active,.switch:active{transform:translateY(1px)}
 .pcard,.pc-btn,.dr-act,.switch,.ss-chip,.ring-prog{transition-timing-function:var(--ease)}
 
@@ -256,5 +263,5 @@ button.danger:hover{background:rgba(248,113,113,.12)}
 }
 @media (prefers-reduced-motion:reduce){
   .pb-waiting,.pcard.needs-you{animation:none}
-  .pcard:hover .ring-prog{filter:drop-shadow(0 0 5px rgba(255,130,0,.5))}
+  .pcard:hover .ring-prog{filter:drop-shadow(0 0 5px var(--accent-glow))}
 }

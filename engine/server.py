@@ -2,29 +2,17 @@
 
 import json
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import actions, collector, deep, roster, spawn, vault
+from . import actions, collector, deep, vault
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
-PROJECTS_TTL = 3.0  # roll-up re-reads ~11 repos; a brief cache keeps the 10s poll cheap
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                  ".css": "text/css; charset=utf-8", ".ico": "image/x-icon",
                  ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
 MAX_BODY = 1_048_576
 _deep_cache = {}
-_projects_cache = {"ts": 0.0, "data": None}
-
-
-def _projects_roll_up():
-    """roster.roll_up() behind a short TTL cache (mirrors the deep-cache idea)."""
-    now = time.time()
-    if _projects_cache["data"] is None or now - _projects_cache["ts"] > PROJECTS_TTL:
-        _projects_cache["data"] = roster.roll_up()
-        _projects_cache["ts"] = now
-    return _projects_cache["data"]
 
 _EMPTY_DETAIL = {"head": {"warnings": ["transcript not found"], "files": {"read": [], "edited": [], "written": [], "searched": []},
                           "rules": [], "skills": [], "agents": [], "mcp": [],
@@ -120,20 +108,6 @@ class Handler(BaseHTTPRequestHandler):
             if rec is None:
                 return self._json({"error": "unknown session"}, 404)
             return self._json(graph)
-        if path == "/projects":
-            return self._json(_projects_roll_up())
-        if path == "/spawns":
-            return self._json({"spawns": spawn.list_spawns()})
-        if path.startswith("/spawn-log/"):
-            log = spawn.read_log(path[len("/spawn-log/"):])
-            if log is None:
-                return self._json({"error": "no log"}, 404)
-            return self._json({"log": log})
-        if path.startswith("/project/"):
-            detail = roster.project_detail(path[len("/project/"):])
-            if detail is None:
-                return self._json({"error": "unknown project"}, 404)
-            return self._json(detail)
         static = (UI_DIR / path.lstrip("/")).resolve()
         if static.is_file() and static.is_relative_to(UI_DIR.resolve()):
             return self._send(static.read_bytes(),
@@ -199,7 +173,8 @@ def serve(port):
     try:
         srv = make_server(port)
     except OSError as e:
-        if getattr(e, "winerror", None) == 10048:
+        import errno
+        if getattr(e, "winerror", None) == 10048 or e.errno == errno.EADDRINUSE:
             print(f"fleet server already running on port {port}")
             return
         raise

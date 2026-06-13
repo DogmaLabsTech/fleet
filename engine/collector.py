@@ -9,22 +9,19 @@ All path roots are env-overridable for testing:
   FLEET_CLAUDE_DIR — overrides ~/.claude (default)
 """
 
-import ctypes
 import json
 import os
 import re
 import time
-from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
+
+from . import oscompat
 
 # ---------------------------------------------------------------- constants
 
 TAIL_BYTES = 262_144          # single tool_result lines can exceed 64 KB
 HISTORY_TAIL_BYTES = 65_536   # history lines can embed huge pastedContents
-STILL_ACTIVE = 259
-PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-FT_UNIX_EPOCH = 116_444_736_000_000_000  # FILETIME of 1970-01-01
 STOPPED_WINDOW_MS = 30 * 60 * 1000
 PID_MATCH_TOLERANCE_MS = 60_000
 
@@ -69,9 +66,8 @@ def repo_root_for(cwd):
 
 
 def slug_for(repo_root):
-    """Folder basename → kebab slug. Splits camelCase ("TitanTamers"→"titan-tamers")
-    and non-alnum ("Kitchen_Compass"→"kitchen-compass"). Authoritative slug↔root
-    pins live in projects.json; this is the fallback derivation."""
+    """Folder basename → kebab slug. Splits camelCase ("MyApp"→"my-app")
+    and non-alnum ("Some_Project"→"some-project")."""
     name = re.split(r"[\\/]", str(repo_root).rstrip("\\/"))[-1]
     name = re.sub(r"(?<=[a-z])(?=[A-Z])", "-", name)  # camelCase boundary
     return re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-").lower()
@@ -79,40 +75,10 @@ def slug_for(repo_root):
 
 # ---------------------------------------------------------------- process layer
 
-if os.name == "nt":
-    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    _k32.OpenProcess.restype = wintypes.HANDLE  # default c_int truncates 64-bit handles
-    _k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    _k32.CloseHandle.argtypes = [wintypes.HANDLE]
-    _k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-    _k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(ctypes.c_ulonglong)] * 4
-else:
-    _k32 = None
-
-
 def proc_creation_unix_ms(pid):
-    """Kernel-reported process creation time in unix ms.
-
-    Returns None if the PID is dead, -1 if alive but unreadable.
-    NEVER replace this with os.kill(pid, 0): on Windows that calls
-    TerminateProcess and would KILL the session being checked.
-    """
-    if not isinstance(pid, int) or pid <= 0:
-        return None
-    handle = _k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    if not handle:
-        return -1 if ctypes.get_last_error() == 5 else None  # 5 = exists, not ours
-    try:
-        code = wintypes.DWORD()
-        if _k32.GetExitCodeProcess(handle, ctypes.byref(code)) and code.value != STILL_ACTIVE:
-            return None
-        creation, exit_t, kern_t, user_t = (ctypes.c_ulonglong() for _ in range(4))
-        if not _k32.GetProcessTimes(handle, ctypes.byref(creation), ctypes.byref(exit_t),
-                                    ctypes.byref(kern_t), ctypes.byref(user_t)):
-            return -1
-        return (creation.value - FT_UNIX_EPOCH) // 10_000
-    finally:
-        _k32.CloseHandle(handle)
+    """Process creation time in unix ms (None=dead, -1=alive-unreadable).
+    Delegates to the cross-platform backend; callers and semantics unchanged."""
+    return oscompat.proc_create_ms(pid)
 
 
 def pid_matches_session(pid, started_at_ms, strict=True):
