@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<!-- ============ SESSIONS (master–detail session monitor) ============ -->
+<!-- ============ SESSIONS (master–detail session monitor — DEFAULT view) ============ -->
 <div id="shell">
   <aside id="rail">
     <header id="rail-head">
@@ -19,6 +19,7 @@
         <h1>Session <b>Fleet</b></h1>
         <button class="theme-toggle" onclick="fleetToggleTheme()" title="Toggle theme">◐</button>
       </div>
+      <button id="to-mission" class="switch">MISSION CONTROL &rarr;</button>
       <div id="counts" class="mono dim">connecting…</div>
     </header>
     <div id="session-list"></div>
@@ -51,6 +52,39 @@
       <section id="tab-timeline" class="tab-body" hidden></section>
     </div>
   </main>
+</div>
+
+<!-- ============ MISSION CONTROL (opt-in via switcher — honesty-split rings) ============ -->
+<div id="mission" hidden>
+  <header id="mission-head">
+    <h1>FLEET <span class="mc-sub">Mission Control</span></h1>
+    <div id="mission-counts" class="mono dim">connecting…</div>
+    <button class="theme-toggle" onclick="fleetToggleTheme()" title="Toggle theme">◐</button>
+    <button id="to-sessions" class="switch">&larr; SESSIONS</button>
+  </header>
+  <div id="ring-legend">
+    <span><b class="lg-verified">◉</b> verified — independent artifact</span>
+    <span><b class="lg-attested">◯</b> attested — provenance cited</span>
+    <span><b class="lg-uncited">◌</b> uncited — no receipt</span>
+  </div>
+  <div id="project-grid"></div>
+</div>
+
+<!-- project drawer: milestones + team for one repo -->
+<div id="drawer" hidden>
+  <div id="drawer-scrim"></div>
+  <aside id="drawer-panel">
+    <header id="drawer-head">
+      <div id="dr-ring"></div>
+      <div>
+        <div id="dr-title"></div>
+        <div id="dr-sub" class="mono dim"></div>
+      </div>
+      <button id="dr-close" aria-label="close">&times;</button>
+    </header>
+    <section id="dr-milestones"></section>
+    <section id="dr-team"></section>
+  </aside>
 </div>
 
 <div id="toasts"></div>

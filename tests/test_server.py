@@ -167,3 +167,26 @@ def test_action_malformed_json_gets_400(live_server):
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(req, timeout=5)
     assert e.value.code == 400
+
+
+def test_projects_route(live_server):
+    server._projects_cache["data"] = None  # bust the cross-test TTL cache
+    status, body = get(live_server + "/projects")
+    d = json.loads(body)
+    assert status == 200
+    assert "generated_at" in d and isinstance(d["projects"], list)
+
+
+def test_project_unknown_404(live_server):
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(live_server + "/project/definitely-not-a-real-slug")
+    assert e.value.code == 404
+    assert json.loads(e.value.read())["error"] == "unknown project"
+
+
+def test_no_spawns_route(live_server):
+    # spawn must never come back: /spawns and /spawn-log must not exist
+    for p in ("/spawns", "/spawn-log/x"):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(live_server + p)
+        assert e.value.code == 404

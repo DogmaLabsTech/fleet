@@ -1,7 +1,8 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const state = { sessions: [], stopped: [], counts: { live: 0, busy: 0, waiting: 0, idle: 0 },
-  selected: null, tabBySession: {}, detail: null, graphNodes: null, graphKey: null, confirmYes: null };
+const state = { view: "sessions", sessions: [], stopped: [], counts: { live: 0, busy: 0, waiting: 0, idle: 0 },
+  selected: null, tabBySession: {}, detail: null, graphNodes: null, graphKey: null,
+  projects: [], project: null, confirmYes: null };
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function fmtAge(s) { if (s < 60) return s + "s"; const m = Math.floor(s / 60); if (m < 60) return m + "m"; return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") + "m"; }
@@ -31,6 +32,184 @@ function askConfirm(text, yesLabel, danger, onYes) {
   yes.classList.toggle("danger", !!danger);
   state.confirmYes = onYes;
   $("confirm").hidden = false;
+}
+
+/* ---------- view switch (sessions ⇄ mission) ---------- */
+function showView(v) {
+  state.view = v;
+  $("mission").hidden = v !== "mission";
+  $("shell").hidden = v !== "sessions";
+  if (v === "mission") refreshProjects();
+  if (v === "sessions") refreshDetail();
+}
+
+/* ================= MISSION CONTROL ================= */
+const SVGNS = "http://www.w3.org/2000/svg";
+function ring(percent, source, size, split) {
+  size = size || 76;
+  const r = size / 2 - 8;
+  const tracked = source === "manifest";
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.setAttribute("class", "ring " + (tracked ? "ring-tracked" : "ring-derived"));
+  svg.setAttribute("role", "img");
+  svg.style.width = svg.style.height = size + "px";
+  const circle = cls => { const ci = document.createElementNS(SVGNS, "circle"); ci.setAttribute("cx", size / 2); ci.setAttribute("cy", size / 2); ci.setAttribute("r", r.toFixed(2)); ci.setAttribute("class", cls); return ci; };
+  svg.appendChild(circle("ring-track"));
+  let label = `${percent}% complete (${source})`;
+  const seg = split && (split.verified || split.attested || split.in_progress);
+  if (tracked && seg) {
+    // two-tone honesty arc: bright verified → dim attested → faint in-progress,
+    // each rotated to start where the previous left off (top = 12 o'clock origin)
+    let cursor = 0;
+    [["seg-verified", split.verified], ["seg-attested", split.attested], ["seg-inprog", split.in_progress]]
+      .forEach(([cls, val]) => {
+        if (val <= 0) return;
+        const arc = circle("ring-prog " + cls);
+        arc.setAttribute("pathLength", "100");
+        arc.setAttribute("stroke-dasharray", val + " " + (100 - val));
+        arc.style.transform = `rotate(${(cursor * 3.6 - 90).toFixed(2)}deg)`;
+        svg.appendChild(arc);
+        cursor += val;
+      });
+    label = `${percent}% — ${split.verified}% verified, ${split.attested}% attested`
+      + (split.in_progress ? `, ${split.in_progress}% in progress` : "");
+  } else {
+    const c = 2 * Math.PI * r;
+    const prog = circle("ring-prog");
+    prog.setAttribute("stroke-dasharray", c.toFixed(2));
+    prog.setAttribute("stroke-dashoffset", (c * (1 - Math.max(0, Math.min(100, percent)) / 100)).toFixed(2));
+    svg.appendChild(prog);
+  }
+  svg.setAttribute("aria-label", label);
+  const t = document.createElementNS(SVGNS, "text");
+  t.setAttribute("x", size / 2); t.setAttribute("y", size / 2); t.setAttribute("class", "ring-num");
+  t.textContent = percent + "%";
+  svg.appendChild(t);
+  return svg;
+}
+function badge(text, kind) { return el("span", "pbadge pb-" + (kind || "x"), text); }
+
+function projectCard(p) {
+  const card = el("div", "pcard" + (p.team.sessions ? " active" : "") + (p.team.waiting ? " needs-you" : ""));
+  const tracked = p.progress.source === "manifest";
+  card.appendChild(ring(p.progress.percent, p.progress.source, 76, p.progress.split));
+  const body = el("div", "pc-body");
+  const top = el("div", "pc-top");
+  top.appendChild(el("span", "pc-title", p.title));
+  top.appendChild(el("span", "pc-src " + (tracked ? "src-tracked" : "src-derived dim"),
+    tracked ? "✓ tracked" : "~ no manifest"));
+  body.appendChild(top);
+  const badges = el("div", "pc-badges");
+  if (p.team.waiting) badges.appendChild(badge("⚠ needs you", "waiting"));
+  const fl = p.progress.flags || {};
+  if (fl.contradicted) badges.appendChild(badge("⚠ " + fl.contradicted + " contradicted", "contradicted"));
+  if (fl.uncited) badges.appendChild(badge("◌ " + fl.uncited + " uncited", "uncited"));
+  if (p.team.sessions) badges.appendChild(badge(p.team.sessions + (p.team.sessions > 1 ? " sessions" : " session"), p.team.busy ? "busy" : "idle"));
+  body.appendChild(badges);
+  card.appendChild(body);
+  card.onclick = () => openProject(p.slug);
+  return card;
+}
+
+let _missionSig = null;
+function renderMission() {
+  const ps = state.projects, c = state.counts;
+  const waiting = ps.reduce((s, p) => s + (p.team.waiting || 0), 0);
+  // header synthesis: lead with "is the fleet okay?" — waiting-on-you first
+  const tracked = ps.filter(p => p.progress.source === "manifest").length;
+  const uncited = ps.reduce((s, p) => s + ((p.progress.flags || {}).uncited || 0), 0);
+  const avg = ps.length ? Math.round(ps.reduce((s, p) => s + p.progress.percent, 0) / ps.length) : 0;
+  const active = ps.filter(p => p.team.sessions).length;
+  $("mission-counts").textContent = (waiting ? `⚠ ${waiting} waiting on you · ` : "") +
+    `${ps.length} repos · avg ${avg}% to done · ${active} active · ${tracked} tracked` +
+    (uncited ? ` · ${uncited} uncited` : "") + (c.busy ? ` · ${c.busy} busy` : "");
+  $("mission-counts").classList.toggle("alert", waiting > 0);
+  // re-render the grid only when the data actually changed (no hover/flicker churn)
+  const sig = JSON.stringify(ps);
+  if (sig === _missionSig && $("project-grid").children.length) return;
+  _missionSig = sig;
+  if (!ps.length) {
+    $("project-grid").replaceChildren(el("div", "grid-empty dim",
+      "No projects yet. Add a .fleet/progress.json to a repo and register it with `fleet projects add` to light up the rings — see docs/ADOPTING.md."));
+    return;
+  }
+  $("project-grid").replaceChildren(...ps.map(projectCard));
+}
+
+/* ---------- project drawer ---------- */
+const _CONF = { verified: ["◉", "verified by an independent artifact"],
+  attested: ["◯", "attested with a provenance citation"],
+  uncited: ["◌", "marked done with no provenance — unverified"],
+  contradicted: ["⚠", "the receipt is absent/mismatched — the claim is contradicted"] };
+function milestoneRow(m) {
+  const row = el("div", "ms-row ms-" + (m.status || "todo"));
+  row.appendChild(el("span", "ms-dot"));
+  const main = el("div", "ms-main");
+  const head = el("div", "ms-head");
+  const conf = _CONF[m.confidence];
+  if (conf) { const g = el("span", "ms-conf mc-" + m.confidence, conf[0]); g.title = conf[1]; head.appendChild(g); }
+  head.appendChild(el("span", "ms-label", m.name));
+  head.appendChild(el("span", "ms-status", m.status || "todo"));
+  if (m.weight) head.appendChild(el("span", "ms-weight dim", "w" + m.weight));
+  main.appendChild(head);
+  if (m.provenance) main.appendChild(el("div", "ms-prov", m.provenance));
+  row.appendChild(main);
+  return row;
+}
+function drawerSession(s) {
+  const r = el("div", "dr-sess");
+  r.appendChild(el("span", "dot " + s.status));
+  r.appendChild(el("span", "drs-title", s.title || s.activity || s.session_id));
+  r.appendChild(el("span", "drs-go", "open →"));
+  r.onclick = () => { closeDrawer(); showView("sessions"); select(s.session_id); };
+  return r;
+}
+function renderDrawer(d) {
+  $("dr-ring").replaceChildren(ring(d.progress.percent, d.progress.source, 64, d.progress.split));
+  $("dr-title").textContent = d.title;
+  const fl = d.progress.flags || {};
+  const bits = [d.progress.source === "manifest" ? "tracked" : "no manifest"];
+  if (fl.contradicted) bits.push(fl.contradicted + " contradicted");
+  if (fl.uncited) bits.push(fl.uncited + " uncited");
+  $("dr-sub").textContent = bits.join("  ·  ");
+
+  const ms = $("dr-milestones"); ms.replaceChildren();
+  if (d.progress.milestones && d.progress.milestones.length) {
+    ms.appendChild(el("h3", null, "milestones → 100%"));
+    d.progress.milestones.forEach(m => ms.appendChild(milestoneRow(m)));
+  } else {
+    ms.appendChild(el("h3", null, "milestones"));
+    ms.appendChild(el("div", "dim ms-empty",
+      "No .fleet/progress.json yet. Add one to track milestones — see docs/ADOPTING.md."));
+  }
+
+  const team = $("dr-team"); team.replaceChildren();
+  const sess = d.team.sessions || [];
+  team.appendChild(el("h3", null, `team — ${sess.length} session${sess.length === 1 ? "" : "s"}`));
+  if (sess.length) sess.forEach(s => team.appendChild(drawerSession(s)));
+  else team.appendChild(el("div", "dim", "no live sessions on this repo"));
+}
+async function openProject(slug) {
+  try {
+    const r = await fetch("/project/" + slug);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.error) return;
+    state.project = d;
+    renderDrawer(d);
+    $("drawer").hidden = false;
+  } catch (e) { /* drawer stays closed */ }
+}
+function closeDrawer() { $("drawer").hidden = true; state.project = null; }
+
+async function refreshProjects() {
+  try {
+    const r = await fetch("/projects");
+    if (!r.ok) return;
+    state.projects = (await r.json()).projects || [];
+    if (state.view === "mission") renderMission();
+  } catch (e) { $("mission-counts").textContent = "collector offline — retrying"; }
 }
 
 /* ---------- rail ---------- */
@@ -250,6 +429,10 @@ async function refreshDetail() {
   } catch (e) { /* keep last view; list poll shows offline */ }
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => { state.tabBySession[state.selected] = b.dataset.tab; refreshDetail(); });
+$("to-sessions").onclick = () => showView("sessions");
+$("to-mission").onclick = () => showView("mission");
+$("dr-close").onclick = closeDrawer;
+$("drawer-scrim").onclick = closeDrawer;
 $("srv-stop").onclick = () => {
   if (window.confirm("Stop the fleet server? The app/dashboard will go offline."))
     post({ action: "stop-server" });
@@ -260,11 +443,12 @@ $("confirm-yes").onclick = async () => {
   const fn = state.confirmYes; state.confirmYes = null;
   if (fn) await fn();
 };
-document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("confirm").hidden) $("confirm-no").click(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("confirm").hidden) $("confirm-no").click(); else if (!$("drawer").hidden) closeDrawer(); } });
 
 function tick() {
   refreshList();
-  refreshDetail();
+  if (state.view === "mission") refreshProjects();
+  if (state.view === "sessions") refreshDetail();
 }
 refreshList();
 setInterval(tick, 5000);

@@ -19,10 +19,36 @@ import re
 import shutil
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from engine.collector import collect
 
 PORT_DEFAULT = 8377
+
+# ---------------------------------------------------------------- repo scaffold (fleet init)
+
+TEMPLATE = {
+    "schema": "fleet-progress/1",
+    "title": "<your project>",
+    "milestones": [
+        {"name": "First milestone", "weight": 1, "status": "in-progress",
+         "provenance": "branch or PR that proves it"},
+        {"name": "A verified one", "weight": 2, "status": "done",
+         "provenance": "commit sha",
+         "verify": {"type": "file", "path": "path/to/an/artifact"}}
+    ]
+}
+
+
+def init_repo(repo="."):
+    d = Path(repo) / ".fleet"
+    d.mkdir(parents=True, exist_ok=True)
+    target = d / "progress.json"
+    if target.exists():
+        print(f"{target} already exists — leaving it untouched")
+        return
+    target.write_text(json.dumps(TEMPLATE, indent=2), encoding="utf-8")
+    print(f"wrote {target}\nEdit it, then run `fleet dash` to see your rings. Docs: docs/ADOPTING.md")
 
 # ---------------------------------------------------------------- ANSI / Windows console
 
@@ -151,8 +177,13 @@ def render_table(data):
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Code session fleet monitor")
-    parser.add_argument("command", nargs="?", choices=["dash", "app"],
-                        help="dash: browser dashboard server; app: native desktop window")
+    parser.add_argument("command", nargs="?",
+                        choices=["dash", "app", "init", "projects"],
+                        help="dash: browser dashboard; app: desktop window; "
+                             "init: scaffold .fleet/progress.json; projects: manage the roster")
+    parser.add_argument("rest", nargs="*",
+                        help="for `projects`: add <path>")
+    parser.add_argument("--repo", help="target repo for `init` (default: current dir)")
     parser.add_argument("--serve", action="store_true", help="run the live dashboard server")
     parser.add_argument("--port", type=int, default=PORT_DEFAULT)
     parser.add_argument("--json", action="store_true", help="dump collector output")
@@ -163,6 +194,17 @@ def main():
     except Exception:
         pass
 
+    if args.command == "init":
+        init_repo(args.repo or ".")
+        return
+    if args.command == "projects":
+        from engine import roster
+        if len(args.rest) >= 2 and args.rest[0] == "add":
+            slug = roster.add_project(args.rest[1])
+            print(f"registered '{slug}' -> {Path(args.rest[1]).resolve()}")
+        else:
+            print("usage: fleet projects add <path>")
+        return
     if args.json:
         print(json.dumps(collect(), indent=2))
         return

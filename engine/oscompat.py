@@ -47,6 +47,18 @@ def open_in_os(target):
         raise OSError(f"{launcher} failed: {e}") from e
 
 
+def user_config_dir():
+    """Per-OS app config dir for fleet (created lazily by callers)."""
+    import sys
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", str(Path.home())))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+    return base / "fleet"
+
+
 def obsidian_registry_path():
     """Path to Obsidian's obsidian.json registry, per-OS."""
     if sys.platform == "win32":

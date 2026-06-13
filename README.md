@@ -15,6 +15,44 @@ transcripts under `~/.claude`, and (optionally) an Obsidian vault you point it a
   ending a session (confirm-gated, with a PID-reuse guard). Fleet never writes to
   `~/.claude` or your vault.
 
+## Mission Control & the honesty rings
+
+Beyond the live session monitor, Fleet has a **Mission Control** view: a ring per
+project showing how far it is to done — and, crucially, **how trustworthy that
+number is.** One file per repo, `<repo>/.fleet/progress.json`, lights up the ring,
+split into three honesty arcs:
+
+- **verified** — a `done` milestone whose `verify` block points at a real repo
+  artifact that Fleet read and confirmed;
+- **attested** — a milestone with a cited receipt (commit / PR / branch) taken on
+  trust;
+- **uncited** — a bare assertion with no receipt (and `contradicted` flags any
+  `done` claim whose artifact is missing).
+
+A ring can't silently lie: green that means *verified* and green that means *I said
+so* are coloured differently. And the trust boundary is the same as the rest of the
+tool — **Fleet decides every tier by reading local files only. It never executes
+anything to verify** (no tests run, no build, no shell, no network); every path is
+sandboxed to the repo root.
+
+Adopt it in one file:
+
+```bash
+fleet init                 # scaffold .fleet/progress.json in the current repo
+fleet projects add <path>  # pin a repo to Mission Control
+fleet dash                 # then switch from the sessions monitor to Mission Control
+```
+
+- [`docs/HONESTY.md`](docs/HONESTY.md) — the verified / attested / uncited /
+  contradicted doctrine, and why Fleet reads but never runs.
+- [`docs/PROGRESS-MANIFEST.md`](docs/PROGRESS-MANIFEST.md) — the
+  `.fleet/progress.json` schema reference, with a worked example.
+- [`docs/ADOPTING.md`](docs/ADOPTING.md) — fill the sidecar by hand or have your
+  coding agent maintain it.
+
+The sessions monitor stays the default view; Mission Control is opt-in via the
+switcher.
+
 ## Install
 
 ```bash

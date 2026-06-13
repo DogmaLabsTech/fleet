@@ -5,7 +5,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import actions, collector, deep, vault
+from . import actions, collector, deep, roster, vault
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -19,6 +19,18 @@ _EMPTY_DETAIL = {"head": {"warnings": ["transcript not found"], "files": {"read"
                           "ctx_tokens": None, "model": None, "branch": None},
                  "timeline": [], "timeline_total": 0,
                  "files": {"read": [], "edited": [], "written": [], "searched": []}}
+
+PROJECTS_TTL = 3.0
+_projects_cache = {"ts": 0.0, "data": None}
+
+
+def _projects_roll_up():
+    import time
+    now = time.time()
+    if _projects_cache["data"] is None or now - _projects_cache["ts"] > PROJECTS_TTL:
+        _projects_cache["data"] = roster.roll_up()
+        _projects_cache["ts"] = now
+    return _projects_cache["data"]
 
 
 def _find_record(sid):
@@ -108,6 +120,11 @@ class Handler(BaseHTTPRequestHandler):
             if rec is None:
                 return self._json({"error": "unknown session"}, 404)
             return self._json(graph)
+        if path == "/projects":
+            return self._json(_projects_roll_up())
+        if path.startswith("/project/"):
+            detail = roster.project_detail(path[len("/project/"):])
+            return self._json(detail) if detail else self._json({"error": "unknown project"}, 404)
         static = (UI_DIR / path.lstrip("/")).resolve()
         if static.is_file() and static.is_relative_to(UI_DIR.resolve()):
             return self._send(static.read_bytes(),
