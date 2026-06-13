@@ -220,6 +220,9 @@ function renderRail() {
     const r1 = el("div", "row1");
     r1.appendChild(el("span", "dot " + s.status));
     r1.appendChild(el("span", "proj", s.project));
+    const pv = el("span", "prov prov-" + (s.provider || "claude") + (s.live_inferred && s.live ? " inferred" : ""), s.provider || "claude");
+    if (s.live_inferred) pv.title = "liveness inferred from recent activity — this tool writes no live-status file";
+    r1.appendChild(pv);
     r1.appendChild(el("span", "age", fmtAge(s.age_s)));
     c.appendChild(r1);
     const now = s.status === "waiting" ? "⚠ " + (s.waiting_for || "waiting on you")
@@ -250,9 +253,17 @@ function renderDetailHead(rec) {
     $("d-project").onclick = () => post({ action: "open-folder", path: rec.cwd });
   }
   $("d-title").textContent = rec.name || rec.title || "";
-  $("d-meta").textContent = `pid ${rec.pid} · ${shortModel(rec.model)} · ${rec.branch || ""} · v${rec.version || "?"} · ${fmtAge(rec.age_s)}`;
+  const bits = [rec.provider || "claude", shortModel(rec.model)];
+  if (rec.branch) bits.push(rec.branch);
+  if (rec.pid) bits.push("pid " + rec.pid);
+  if (rec.version) bits.push("v" + rec.version);
+  if (rec.live_inferred) bits.push("~live (inferred)");
+  bits.push(fmtAge(rec.age_s));
+  $("d-meta").textContent = bits.join(" · ");
   $("d-copy").onclick = () => navigator.clipboard.writeText(rec.session_id)
     .then(() => toast("session id copied", true), () => toast("copy failed", false));
+  // Ending a session needs a live PID — only Claude and Qwen expose one.
+  $("d-kill").style.display = rec.pid ? "" : "none";
   $("d-kill").onclick = () => {
     const rec2 = rec;
     askConfirm(`End session "${rec2.project} — ${rec2.name || rec2.title || rec2.session_id}"` +
@@ -274,9 +285,10 @@ function renderHead(d) {
   const body = $("tab-head"); body.replaceChildren();
   const h = d.head;
   const gauge = el("div", "h-section");
-  gauge.appendChild(el("h3", null, `context — ${h.ctx_tokens ? Math.round(h.ctx_tokens / 1000) + "k" : "?"} / 200k tokens`));
+  const win = h.ctx_window || 200000;  // Claude's 200k default; Codex/Gemini report their own
+  gauge.appendChild(el("h3", null, `context — ${h.ctx_tokens ? Math.round(h.ctx_tokens / 1000) + "k" : "?"} / ${Math.round(win / 1000)}k tokens`));
   const g = el("div", "gauge"); const i = el("i");
-  i.style.width = Math.min(100, (h.ctx_tokens || 0) / 2000) + "%"; g.appendChild(i); gauge.appendChild(g);
+  i.style.width = Math.min(100, (h.ctx_tokens || 0) / win * 100) + "%"; g.appendChild(i); gauge.appendChild(g);
   body.appendChild(gauge);
   const rules = el("div", "h-section"); rules.appendChild(el("h3", null, "rules in scope (from cwd)"));
   (h.rules || []).forEach(p => rules.appendChild(fileRow({ path: p, count: "" }, "open-file")));

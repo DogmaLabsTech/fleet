@@ -38,6 +38,7 @@ body{background:var(--bg-main);color:var(--ink);font-family:'Inter',system-ui,sa
 .scard.selected{outline:1px solid var(--accent)}
 .scard.busy{border-left-color:var(--accent)}
 .scard.waiting{border-left-color:var(--amber);animation:pulse 1.6s infinite}
+.scard.active{border-left-color:color-mix(in srgb,var(--accent) 50%,transparent)}
 .scard .row1{display:flex;align-items:center;gap:.45rem}
 .scard .proj{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:.85rem}
 .scard .age{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--dim)}
@@ -46,6 +47,17 @@ body{background:var(--bg-main);color:var(--ink);font-family:'Inter',system-ui,sa
 .dot.busy{background:var(--accent);box-shadow:0 0 8px var(--accent)}
 .dot.waiting{background:var(--amber);box-shadow:0 0 8px var(--amber)}
 .dot.idle{background:var(--green);opacity:.55}
+/* inferred-active (a freshness guess, not a read PID): calm, no glow — must NOT
+   look like Claude's verified busy. Qwen's verified-active drops the tilde. */
+.dot.active{background:var(--accent);opacity:.55}
+/* provider tag — which terminal AI agent owns the session */
+.prov{font-family:'JetBrains Mono',monospace;font-size:.56rem;text-transform:uppercase;letter-spacing:.05em;
+  padding:.05rem .3rem;border-radius:5px;border:1px solid var(--line);color:var(--dim);flex:none}
+.prov-claude{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+.prov-codex{color:#10a37f;border-color:color-mix(in srgb,#10a37f 45%,transparent)}
+.prov-gemini{color:#4285f4;border-color:color-mix(in srgb,#4285f4 45%,transparent)}
+.prov-qwen{color:#a855f7;border-color:color-mix(in srgb,#a855f7 45%,transparent)}
+.prov.inferred::after{content:"~";margin-left:.12rem;opacity:.7}
 @keyframes pulse{50%{opacity:.55}}
 #detail{display:flex;flex-direction:column;overflow:hidden}
 #detail-empty{margin:auto;color:var(--dim)}

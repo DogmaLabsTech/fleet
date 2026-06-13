@@ -165,6 +165,8 @@ def _status_cell(rec):
         return ACCENT + "● BUSY".ljust(8) + RESET
     if status == "waiting":
         return AMBER + "◌ WAIT".ljust(8) + RESET
+    if status == "active":            # inferred-live (Codex/Gemini): no verified PID
+        return GREEN + "◍ live".ljust(8) + RESET
     if status == "idle":
         return DIM + "○ idle".ljust(8) + RESET
     return DIM + _fit("· " + status, 8) + RESET
@@ -186,13 +188,14 @@ def render_table(data):
     out.append("")
 
     show_branch = width >= 110
-    w_proj, w_title, w_age, w_model, w_branch = 16, 28, 6, 10, 12
-    fixed = 8 + 2 + w_proj + 2 + w_title + 2 + w_age + 2 + w_model + 2
+    w_prov, w_proj, w_title, w_age, w_model, w_branch = 7, 16, 28, 6, 10, 12
+    fixed = 8 + 2 + w_prov + 2 + w_proj + 2 + w_title + 2 + w_age + 2 + w_model + 2
     if show_branch:
         fixed += w_branch + 2
     w_now = max(20, width - fixed - 1)
 
-    header = (DIM + "STATUS".ljust(8) + "  " + "PROJECT".ljust(w_proj) + "  "
+    header = (DIM + "STATUS".ljust(8) + "  " + "PROV".ljust(w_prov) + "  "
+              + "PROJECT".ljust(w_proj) + "  "
               + "TITLE".ljust(w_title) + "  " + "AGE".rjust(w_age) + "  "
               + "MODEL".ljust(w_model) + "  "
               + ("BRANCH".ljust(w_branch) + "  " if show_branch else "")
@@ -209,6 +212,7 @@ def render_table(data):
             now = DIM + _fit("last: " + (rec["last_prompt"] or "—"), w_now) + RESET
         title = rec["name"] or rec["title"] or ""
         line = (_status_cell(rec) + "  "
+                + DIM + _fit(rec.get("provider", "claude"), w_prov) + RESET + "  "
                 + _fit(rec["project"], w_proj) + "  "
                 + DIM + _fit(title, w_title) + RESET + "  "
                 + humanize_age(rec["age_s"]).rjust(w_age) + "  "
