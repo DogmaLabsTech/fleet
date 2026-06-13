@@ -9,6 +9,12 @@
 that won't pretend work is done when it isn't.** 100% local; nothing leaves your
 machine.
 
+![Fleet Mission Control — honest progress rings](docs/demo-rings.png)
+
+*Mission Control: one ring per repo, split into **verified** (an independent
+artifact backs it) / **attested** (a cited receipt) / **uncited** (no receipt) —
+and flagged **contradicted** when a `done` claim's receipt is missing.*
+
 See, supervise, and inspect every running Claude Code session from one window —
 the live table, what each session has in its head, which files it touched, and how
 its work connects to your Obsidian vault.
