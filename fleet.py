@@ -312,18 +312,25 @@ def render_table(data):
 
 # ---------------------------------------------------------------- onboarding inputs
 
+_EOF = object()  # sentinel: stdin closed / at EOF — stop prompting, fall back
+
+
 def _prompt(question, default=None):
+    """Ask once. Returns the answer, `default` on a blank line, or the _EOF
+    sentinel if the stream is closed. Returning a sentinel (not "") on EOF is
+    what lets callers fall back instead of re-prompting into an EOF busy-spin."""
     try:
         ans = input(question).strip()
     except (EOFError, KeyboardInterrupt):
-        ans = ""
+        return _EOF
     return ans or default
 
 
 def _onboarding_inputs(args):
     """Resolve (name, dest, use) for init-vault. Prompts only on a real TTY and
-    only for values not supplied by flags/positional — so tests, CI, and scripts
-    never block. Location defaults under the user's home path."""
+    only for values not supplied by flags/positional. Every prompt is EOF-safe:
+    a closed stream (incl. a fake/at-EOF TTY where isatty() lies) falls back to a
+    derived default instead of re-prompting, so init-vault can never hang."""
     try:
         interactive = sys.stdin.isatty() and not args.yes
     except (ValueError, AttributeError):
@@ -332,8 +339,14 @@ def _onboarding_inputs(args):
 
     name = args.name or (_name_from_path(positional) if positional else None)
     if not name and interactive:
-        while not name:
-            name = _prompt("Name your vault (e.g. 'Acme Brain'): ")
+        for _ in range(3):  # bounded; EOF or repeated blanks -> derived fallback below
+            ans = _prompt("Name your vault (e.g. 'Acme Brain'): ")
+            if ans is _EOF:
+                interactive = False  # stream is closed — stop prompting entirely
+                break
+            if ans:
+                name = ans
+                break
 
     if args.here:
         dest = "."
@@ -343,7 +356,11 @@ def _onboarding_inputs(args):
         dest = positional
     elif interactive:
         default_dir = str(Path.home() / _slug(name or "my-vault"))
-        dest = _prompt(f"Where to create it [{default_dir}]: ", default_dir)
+        ans = _prompt(f"Where to create it [{default_dir}]: ", default_dir)
+        if ans is _EOF:
+            interactive, dest = False, default_dir
+        else:
+            dest = ans or default_dir
     else:
         dest = "."
 
@@ -352,7 +369,8 @@ def _onboarding_inputs(args):
 
     use = args.use
     if use is None and interactive:
-        use = _prompt("In one line, how will you use it? (optional): ") or None
+        ans = _prompt("In one line, how will you use it? (optional): ")
+        use = None if (ans is _EOF or not ans) else ans
 
     return name, dest, use
 

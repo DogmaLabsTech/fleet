@@ -133,3 +133,31 @@ def test_onboarding_inputs_noninteractive_never_blocks():
     # no flags, no TTY, yes=True: must resolve without prompting (would hang CI)
     name, dest, use = fleet._onboarding_inputs(_args())
     assert dest == "." and name and use is None
+
+
+def test_onboarding_inputs_eof_on_lying_tty_does_not_spin(monkeypatch):
+    """Guard B1: a stdin that reports isatty()=True but is at EOF (MSYS </dev/null,
+    some CI ptys, script/nohup/containers) must fall back to a derived default —
+    NOT busy-spin the name loop. Drives the real failure: isatty->True + EOF,
+    yes=False, no name flag. Pre-fix this hung; the thread+timeout proves it can't."""
+    import threading
+
+    class _LyingTTYAtEOF:
+        def isatty(self):
+            return True
+        def readline(self, *a):
+            raise EOFError
+        def read(self, *a):
+            raise EOFError
+        def fileno(self):
+            raise OSError
+
+    monkeypatch.setattr("sys.stdin", _LyingTTYAtEOF())
+    box = {}
+    t = threading.Thread(target=lambda: box.update(v=fleet._onboarding_inputs(_args(yes=False))),
+                         daemon=True)
+    t.start()
+    t.join(timeout=5)
+    assert not t.is_alive(), "init-vault onboarding spun on a lying TTY at EOF"
+    name, dest, use = box["v"]
+    assert name and dest == "." and use is None
