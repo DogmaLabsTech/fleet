@@ -5,7 +5,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import actions, collector, deep, roster, vault
+from . import actions, collector, providers, roster, vault
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -16,7 +16,7 @@ _deep_cache = {}
 
 _EMPTY_DETAIL = {"head": {"warnings": ["transcript not found"], "files": {"read": [], "edited": [], "written": [], "searched": []},
                           "rules": [], "skills": [], "agents": [], "mcp": [],
-                          "ctx_tokens": None, "model": None, "branch": None},
+                          "ctx_tokens": None, "ctx_window": None, "model": None, "branch": None},
                  "timeline": [], "timeline_total": 0,
                  "files": {"read": [], "edited": [], "written": [], "searched": []}}
 
@@ -42,19 +42,26 @@ def _find_record(sid):
 
 
 def deep_for(sid):
-    """(record, deep-parse) for a session id, cached on transcript identity."""
+    """(record, deep-parse) for a session id, cached on transcript identity.
+    Dispatches to the record's provider so Codex/Gemini/Qwen sessions drill down
+    through their own parsers, not Claude's."""
     rec = _find_record(sid)
     if rec is None:
         return None, None
-    transcript = collector.find_transcript(rec["cwd"], sid)
-    if transcript is None:
+    prov = providers.get(rec.get("provider", "claude"))
+    transcript = prov.find_transcript(rec) if prov else None
+    if transcript is None or not Path(transcript).exists():
         return rec, _EMPTY_DETAIL
+    transcript = Path(transcript)
     try:
         st = transcript.stat()
         key = (str(transcript), st.st_mtime_ns, st.st_size)
         cached = _deep_cache.get(sid)
         if cached is None or cached["key"] != key:
-            _deep_cache[sid] = {"key": key, "data": deep.parse_full(transcript, rec), "graph": None}
+            data = prov.deep_parse(rec, transcript)
+            if data is None:
+                return rec, _EMPTY_DETAIL
+            _deep_cache[sid] = {"key": key, "data": data, "graph": None}
         return rec, _deep_cache[sid]["data"]
     except OSError:
         return rec, _EMPTY_DETAIL

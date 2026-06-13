@@ -75,6 +75,27 @@ def infer_status(updated_ms, now_ms):
     return "stopped", False
 
 
+def rules_chain(cwd, filename, global_path=None):
+    """Rule files in scope for a session: `filename` from cwd up through its
+    parents, then an optional global path. Each provider passes its own rules
+    filename (CLAUDE.md / AGENTS.md / GEMINI.md / QWEN.md)."""
+    from pathlib import Path
+    rules = []
+    try:
+        p = Path(cwd)
+        for parent in [p, *p.parents]:
+            c = parent / filename
+            if c.exists():
+                rules.append(str(c))
+    except (OSError, ValueError):
+        pass
+    if global_path is not None:
+        gp = Path(global_path)
+        if gp.exists():
+            rules.append(str(gp))
+    return rules
+
+
 def tail_lines(path, n_bytes=262_144):
     """Last ~n_bytes of a file as decoded lines, dropping the partial first line.
     Mirrors collector.tail_lines so providers don't reach back into Claude code."""
