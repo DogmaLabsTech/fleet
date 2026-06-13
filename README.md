@@ -9,7 +9,7 @@
 that won't pretend work is done when it isn't.** 100% local; nothing leaves your
 machine.
 
-![Fleet Mission Control — honest progress rings](docs/demo-rings.png)
+![Fleet Mission Control — honest progress rings](docs/demo-rings.gif)
 
 *Mission Control: one ring per repo, split into **verified** (an independent
 artifact backs it) / **attested** (a cited receipt) / **uncited** (no receipt) —
