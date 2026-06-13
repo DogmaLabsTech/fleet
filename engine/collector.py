@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import oscompat
+from .providers import base
 
 # ---------------------------------------------------------------- constants
 
@@ -235,8 +236,12 @@ def _read_session_file(path):
     return None
 
 
-def collect():
-    now_ms = int(time.time() * 1000)
+def collect_claude(now_ms):
+    """Gather Claude Code sessions as normalized records (live_list, stopped).
+
+    The shared sort/count/age step lives in collect(), which runs it across every
+    provider — so this returns lists, not the final envelope.
+    """
     live, stopped = {}, []
     for path in sorted(sessions_dir().glob("*.json")):
         try:
@@ -249,22 +254,21 @@ def collect():
             updated = data.get("updatedAt") or started
             alive = status != "stopped" and pid_matches_session(data.get("pid"), started, strict=False)
             cwd = data.get("cwd") or ""
-            rec = {
-                "pid": data.get("pid"),
-                "session_id": sid,
-                "cwd": cwd,
-                "project": re.split(r"[\\/]", cwd.rstrip("\\/"))[-1] or "?",
-                "status": status if alive else "stopped",
-                "waiting_for": data.get("waitingFor"),
-                "kind": data.get("kind") or "interactive",
-                "name": data.get("name"),
-                "version": data.get("version"),
-                "started_at": started,
-                "updated_at": updated,
-                "live": alive,
-                "title": None, "last_prompt": None, "activity": None,
-                "model": None, "branch": None, "ctx_tokens": None,
-            }
+            rec = base.make_record(
+                provider="claude",
+                pid=data.get("pid"),
+                session_id=sid,
+                cwd=cwd,
+                project=re.split(r"[\\/]", cwd.rstrip("\\/"))[-1] or "?",
+                status=status if alive else "stopped",
+                waiting_for=data.get("waitingFor"),
+                kind=data.get("kind") or "interactive",
+                name=data.get("name"),
+                version=data.get("version"),
+                started_at=started,
+                updated_at=updated,
+                live=alive,
+            )
             if alive:
                 prev = live.get(sid)
                 if prev is None or updated > prev["updated_at"]:
@@ -274,10 +278,12 @@ def collect():
         except Exception:
             continue  # one weird session file must never kill the table
 
-    for rec in live.values():
+    live_list = list(live.values())
+    for rec in live_list:
         try:
             transcript = find_transcript(rec["cwd"], rec["session_id"])
             if transcript:
+                rec["transcript"] = str(transcript)
                 info = parse_tail(tail_lines(transcript))
                 for key in ("title", "last_prompt", "activity", "model", "branch", "ctx_tokens"):
                     if info.get(key):
@@ -295,8 +301,24 @@ def collect():
                 rec["last_prompt"] = history_prompt_fallback(rec["session_id"])
             except Exception:
                 pass
+    return live_list, stopped
 
-    sessions = sorted(live.values(), key=lambda r: (
+
+def collect():
+    """Merge live + recently-stopped sessions across every enabled provider into
+    the dashboard envelope (counts/sessions/stopped_recent)."""
+    now_ms = int(time.time() * 1000)
+    from .providers import enabled_providers
+    live, stopped = [], []
+    for prov in enabled_providers():
+        try:
+            prov_live, prov_stopped = prov.collect(now_ms)
+            live.extend(prov_live)
+            stopped.extend(prov_stopped)
+        except Exception:
+            continue  # one broken provider must never kill the table
+
+    sessions = sorted(live, key=lambda r: (
         0 if r["kind"] == "interactive" else 1,
         _STATUS_ORDER.get(r["status"], 2),
         now_ms - r["updated_at"],

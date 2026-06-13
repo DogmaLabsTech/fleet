@@ -34,6 +34,9 @@ def fixture_claude_dir(tmp_path, monkeypatch):
     (proj / "fix-1.jsonl").write_text(dynamic, encoding="utf-8")
     (claude / "history.jsonl").write_text("", encoding="utf-8")
     monkeypatch.setenv("FLEET_CLAUDE_DIR", str(claude))
+    # Isolate to the Claude provider so this machine's real ~/.codex etc. can't
+    # bleed into Claude-only assertions.
+    monkeypatch.setenv("FLEET_PROVIDERS", "claude")
     return claude
 
 
