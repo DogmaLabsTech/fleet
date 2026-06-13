@@ -4,22 +4,31 @@ import time
 from engine import actions, vault
 
 
-def test_kill_refuses_on_pid_mismatch():
-    # PID 4 is the Windows System process - startedAt of "now" can't match its creation time;
-    # it may also be unreadable (access denied), which is equally a valid refusal
-    res = actions.kill_session(4, int(time.time() * 1000))
+def test_kill_refuses_on_pid_mismatch(monkeypatch):
+    # Alive (creation time readable) but its creation time is nowhere near the
+    # session's startedAt -> identity mismatch -> refused. OS-independent: does not
+    # rely on a real system PID, whose age varies on a freshly-booted CI runner.
+    monkeypatch.setattr(collector, "proc_creation_unix_ms", lambda pid: 1_000_000)
+    res = actions.kill_session(4321, 9_000_000_000)
     assert res["ok"] is False
-    assert ("mismatch" in res["message"] or "not alive" in res["message"]
-            or "unverifiable" in res["message"])
+    assert "mismatch" in res["message"] or "not alive" in res["message"]
 
 
 def test_kill_terminates_throwaway_process():
-    p = subprocess.Popen(["ping", "-n", "30", "127.0.0.1"],
+    # A cross-platform long-running child (Windows `ping -n` syntax differs from POSIX).
+    p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    started_ms = int(time.time() * 1000)
-    res = actions.kill_session(p.pid, started_ms)
-    assert res["ok"] is True
-    assert isinstance(p.wait(timeout=10), int)
+    try:
+        time.sleep(0.2)  # let it register so its creation time is readable
+        started = collector.proc_creation_unix_ms(p.pid)
+        assert isinstance(started, int) and started > 0, "could not read child creation time"
+        res = actions.kill_session(p.pid, started)
+        assert res["ok"] is True
+        assert isinstance(p.wait(timeout=10), int)
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait(timeout=10)
 
 
 def test_open_obsidian_builds_uri_without_launching(fixture_vault, monkeypatch):

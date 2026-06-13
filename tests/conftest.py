@@ -23,11 +23,14 @@ def fixture_claude_dir(tmp_path, monkeypatch):
         "status": "busy", "kind": "interactive", "version": "2.1.174",
         "startedAt": now_ms - 60_000, "updatedAt": now_ms - 5_000,
     }), encoding="utf-8")
-    # Generate a transcript using the tmp vault path so /vault route resolves pages.
-    # test_deep.py uses the static fixture directly and is unaffected.
-    vault_path = str(tmp_path / "my-vault").replace("\\", "\\\\")
+    # Generate a transcript using the tmp vault path so /vault route resolves pages
+    # on any OS. The fixture stores JSON-escaped Windows paths; rewrite the vault
+    # root to the tmp vault and normalise separators to '/' (pathlib resolves
+    # forward slashes on Windows too). test_deep.py uses the static fixture directly
+    # and is unaffected.
+    native = (tmp_path / "my-vault").as_posix()
     static = (FIXTURES / "transcript.jsonl").read_text(encoding="utf-8")
-    dynamic = static.replace("C:\\\\projects\\\\my-vault", vault_path)
+    dynamic = static.replace("C:\\\\projects\\\\my-vault", native).replace("\\\\", "/")
     (proj / "fix-1.jsonl").write_text(dynamic, encoding="utf-8")
     (claude / "history.jsonl").write_text("", encoding="utf-8")
     monkeypatch.setenv("FLEET_CLAUDE_DIR", str(claude))
