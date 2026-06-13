@@ -53,7 +53,12 @@ def _read_runtime(chat):
 
 def _is_alive(pid):
     """True only if a process with this pid is currently running (zombies count
-    as dead — see oscompat). None pid / non-int -> dead."""
+    as dead — see oscompat). None pid / non-int -> dead.
+
+    proc_create_ms returns None (dead), -1 (alive but identity unreadable —
+    access denied), or a create-time int. We count -1 as alive: the OS confirms
+    the process exists, so this stays a *read fact*, not a freshness guess — the
+    honesty line holds."""
     if not isinstance(pid, int):
         return False
     return oscompat.proc_create_ms(pid) is not None
