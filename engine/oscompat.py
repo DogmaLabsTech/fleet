@@ -20,12 +20,20 @@ import psutil
 
 
 def proc_create_ms(pid):
-    """Process creation time in unix ms, or None (dead) / -1 (alive-unreadable)."""
+    """Process creation time in unix ms, or None (dead) / -1 (alive-unreadable).
+
+    A POSIX zombie (terminated, awaiting reap by its parent) still exposes a
+    creation time but is not running — treat it as dead so liveness/kill checks
+    don't see a defunct session as alive. (No-op on Windows, which has no zombies.)
+    """
     if not isinstance(pid, int) or pid <= 0:
         return None
     try:
-        return int(psutil.Process(pid).create_time() * 1000)
-    except psutil.NoSuchProcess:
+        p = psutil.Process(pid)
+        if p.status() == psutil.STATUS_ZOMBIE:
+            return None
+        return int(p.create_time() * 1000)
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
         return None
     except (psutil.AccessDenied, OSError):
         return -1
