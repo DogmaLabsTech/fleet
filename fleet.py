@@ -50,6 +50,69 @@ def init_repo(repo="."):
     target.write_text(json.dumps(TEMPLATE, indent=2), encoding="utf-8")
     print(f"wrote {target}\nEdit it, then run `fleet dash` to see your rings. Docs: docs/ADOPTING.md")
 
+# ---------------------------------------------------------------- vault scaffold (fleet init-vault)
+
+VAULT_SKELETON = Path(__file__).resolve().parent / "vault_skeleton"
+
+
+def _obsidian_status():
+    """'detected' / 'not found' — detection only, never installs anything."""
+    try:
+        from engine import oscompat
+        return "detected" if oscompat.obsidian_registry_path().exists() else "not found"
+    except Exception:
+        return "not found"
+
+
+def scaffold_vault(dest=".", open_after=False):
+    """Copy the generic knowledge-vault skeleton into dest, no-clobber per file.
+
+    If dest/CLAUDE.md already exists, the vault contract is written to
+    wiki/_vault-contract.md instead so we never overwrite the adopter's own rules.
+    Ships zero third-party code; the self-building engine is a plugin the adopter
+    installs separately (printed below)."""
+    dest = Path(dest)
+    written, skipped, sidecar_written = [], [], False
+    for src in sorted(VAULT_SKELETON.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(VAULT_SKELETON)
+        target = dest / rel
+        content = src.read_text(encoding="utf-8")
+        is_claude = rel.as_posix() == "CLAUDE.md"
+        if is_claude and target.exists():
+            # If the existing CLAUDE.md is ours (re-run), skip it. If it's the
+            # adopter's own, route our contract to a sidecar instead of overwriting.
+            if target.read_text(encoding="utf-8") == content:
+                skipped.append("CLAUDE.md")
+                continue
+            target = dest / "wiki" / "_vault-contract.md"
+        if target.exists():
+            skipped.append(target.relative_to(dest).as_posix())
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        written.append(target.relative_to(dest).as_posix())
+        if is_claude and target.name == "_vault-contract.md":
+            sidecar_written = True
+
+    print(f"Vault scaffolded at {dest}  ({len(written)} written, {len(skipped)} skipped).")
+    if sidecar_written:
+        print("  note: you already have a CLAUDE.md - merge the routing block from "
+              "wiki/_vault-contract.md")
+    print("Your AI is now pointed at it: run `claude` here and it will use wiki/ as memory.")
+    print("\nTo make the vault self-building + searchable, install the engine (MIT, by AgriciDaniel):")
+    print("    /plugin marketplace add AgriciDaniel/claude-obsidian")
+    print(f"\nObsidian (the GUI) is optional - the vault is just markdown. [{_obsidian_status()}]")
+    print("Docs: docs/ADOPTING.md")
+
+    if open_after:
+        try:
+            from engine import oscompat
+            oscompat.open_in_os(str(dest.resolve()))
+        except OSError:
+            pass
+
 # ---------------------------------------------------------------- ANSI / Windows console
 
 RESET = "\x1b[0m"
@@ -178,12 +241,16 @@ def render_table(data):
 def main():
     parser = argparse.ArgumentParser(description="Claude Code session fleet monitor")
     parser.add_argument("command", nargs="?",
-                        choices=["dash", "app", "init", "projects"],
+                        choices=["dash", "app", "init", "init-vault", "projects"],
                         help="dash: browser dashboard; app: desktop window; "
-                             "init: scaffold .fleet/progress.json; projects: manage the roster")
+                             "init: scaffold .fleet/progress.json; "
+                             "init-vault: scaffold an AI-memory vault; "
+                             "projects: manage the roster")
     parser.add_argument("rest", nargs="*",
-                        help="for `projects`: add <path>")
+                        help="for `projects`: add <path>; for `init-vault`: target dir")
     parser.add_argument("--repo", help="target repo for `init` (default: current dir)")
+    parser.add_argument("--open", action="store_true",
+                        help="for `init-vault`: open the scaffolded folder afterwards")
     parser.add_argument("--serve", action="store_true", help="run the live dashboard server")
     parser.add_argument("--port", type=int, default=PORT_DEFAULT)
     parser.add_argument("--json", action="store_true", help="dump collector output")
@@ -196,6 +263,9 @@ def main():
 
     if args.command == "init":
         init_repo(args.repo or ".")
+        return
+    if args.command == "init-vault":
+        scaffold_vault(args.rest[0] if args.rest else ".", open_after=args.open)
         return
     if args.command == "projects":
         from engine import roster

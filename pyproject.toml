@@ -38,4 +38,4 @@ packages = ["engine"]
 py-modules = ["fleet", "app"]
 
 [tool.setuptools.package-data]
-"*" = ["ui/*"]
+"*" = ["ui/*", "vault_skeleton/*", "vault_skeleton/**/*"]

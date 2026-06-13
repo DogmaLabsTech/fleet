@@ -68,6 +68,37 @@ fleet dash                 # then switch from the sessions monitor to Mission Co
 The sessions monitor stays the default view; Mission Control is opt-in via the
 switcher.
 
+## Give your AI a memory
+
+Fleet can also scaffold a **knowledge vault** — a plain-markdown folder your coding
+agent reads and writes as long-term memory. From the repo (or any folder) you want
+your AI to remember:
+
+```bash
+fleet init-vault          # scaffold the current folder as a vault
+fleet init-vault ./brain  # …or a subfolder
+```
+
+It writes a `CLAUDE.md` that **points your AI at the vault**, plus a `wiki/` skeleton
+(index, log, conventions, a seed domain folder) and a few note templates — no-clobber,
+and it never overwrites an existing `CLAUDE.md` (the contract goes to a sidecar to
+merge). Launch `claude` in that folder and your agent treats `wiki/` as its memory.
+
+That makes the AI *use* the vault. To make the vault **self-building and searchable**
+— auto-ingest sources, lint links, local retrieval — install the engine it's designed
+around, the MIT-licensed
+[`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian) plugin by
+AgriciDaniel:
+
+```
+/plugin marketplace add AgriciDaniel/claude-obsidian
+```
+
+Fleet ships only the generic skeleton (your own files — nothing third-party). The
+engine, and Obsidian's desktop GUI, are optional installs you control; retrieval
+defaults to local BM25, so no model download is required and nothing leaves your
+machine.
+
 ## Install
 
 ```bash

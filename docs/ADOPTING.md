@@ -107,8 +107,24 @@ at** — and that artifact is something you already produce:
 
 Fleet **reads** those artifacts; it never runs the tooling that makes them (see
 [`HONESTY.md`](HONESTY.md)). The internal machinery some teams run — relay
-pipelines, visual audits, knowledge vaults — is **not required and not shipped**;
+pipelines, visual audits, retrieval engines — is **not required and not shipped**;
 if you happen to run it and it leaves a file behind, that file is just one more
 artifact you can aim a `verify` block at. The doctrine scales down to a single
 hand-edited JSON and up to a fully-instrumented pipeline, with the same one file
 at its center.
+
+## Optional: give the agent a memory vault
+
+Separate from the progress sidecar — and just as optional — Fleet can scaffold a
+generic **knowledge vault** for your AI to use as long-term memory:
+
+```bash
+fleet init-vault
+```
+
+This writes a `CLAUDE.md` that points your agent at a `wiki/` folder, plus a skeleton
+and note templates — all generic, none of it required by Mission Control. It makes the
+agent *use* the vault; to make the vault self-building and searchable, install the MIT
+[`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian) plugin by
+AgriciDaniel. Fleet ships the skeleton, never the engine. See the README's "Give your
+AI a memory" section for the full flow.

@@ -1,0 +1,7 @@
+# Obsidian local state
+.obsidian/workspace*
+.obsidian/cache
+
+# OS cruft
+.DS_Store
+Thumbs.db
