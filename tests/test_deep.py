@@ -15,7 +15,7 @@ def test_head_files_buckets():
     reads = [f["path"] for f in head["files"]["read"]]
     assert "C:\\projects\\my-vault\\wiki\\shared\\Quality Bar.md" in reads
     edits = [f["path"] for f in head["files"]["edited"]]
-    assert "C:\\projects\\my-vault\\wiki\\projects\\Kitchen Compass.md" in edits
+    assert "C:\\projects\\my-vault\\wiki\\projects\\Project Atlas.md" in edits
     writes = [f["path"] for f in head["files"]["written"]]
     assert "C:\\projects\\tool\\out.txt" in writes
     assert head["files"]["searched"][0]["path"].startswith("widget")

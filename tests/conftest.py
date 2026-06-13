@@ -41,10 +41,10 @@ def fixture_vault(tmp_path, monkeypatch):
     wiki = vault / "wiki" / "shared"
     wiki.mkdir(parents=True)
     (wiki / "Quality Bar.md").write_text(
-        "Links to [[Kitchen Compass]] and [[Missing Page]].", encoding="utf-8")
+        "Links to [[Project Atlas]] and [[Missing Page]].", encoding="utf-8")
     proj_dir = vault / "wiki" / "projects"
     proj_dir.mkdir(parents=True)
-    (proj_dir / "Kitchen Compass.md").write_text(
+    (proj_dir / "Project Atlas.md").write_text(
         "See [[Quality Bar]].", encoding="utf-8")
     registry = tmp_path / "obsidian.json"
     registry.write_text(json.dumps({

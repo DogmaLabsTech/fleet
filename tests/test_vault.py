@@ -25,18 +25,18 @@ def test_build_graph(fixture_vault):
     files = {
         "read": [{"path": str(fixture_vault / "wiki" / "shared" / "Quality Bar.md"),
                   "count": 1, "last": "t"}],
-        "edited": [{"path": str(fixture_vault / "wiki" / "projects" / "Kitchen Compass.md"),
+        "edited": [{"path": str(fixture_vault / "wiki" / "projects" / "Project Atlas.md"),
                     "count": 2, "last": "t"}],
         "written": [], "searched": [],
     }
     g = vault.build_graph(files)
     labels = {n["label"]: n for n in g["nodes"]}
     assert "Quality Bar" in labels and labels["Quality Bar"]["touch"] == "read"
-    assert labels["Kitchen Compass"]["touch"] == "edited"
+    assert labels["Project Atlas"]["touch"] == "edited"
     assert any(n["kind"] == "session" for n in g["nodes"])
-    # wikilink Quality Bar -> Kitchen Compass resolved as edge between existing nodes
+    # wikilink Quality Bar -> Project Atlas resolved as edge between existing nodes
     ids = {n["label"]: n["id"] for n in g["nodes"]}
-    assert {"from": ids["Quality Bar"], "to": ids["Kitchen Compass"], "kind": "link"} in g["edges"]
+    assert {"from": ids["Quality Bar"], "to": ids["Project Atlas"], "kind": "link"} in g["edges"]
     # [[Missing Page]] doesn't resolve -> no phantom node
     assert "Missing Page" not in labels
 

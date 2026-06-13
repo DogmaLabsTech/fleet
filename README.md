@@ -1,5 +1,14 @@
 # Fleet — Claude Code session monitor
 
+[![ci](https://github.com/DogmaLabsTech/fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/DogmaLabsTech/fleet/actions/workflows/ci.yml)
+&nbsp;![python](https://img.shields.io/badge/python-3.9%2B-blue)
+&nbsp;![license](https://img.shields.io/badge/license-MIT-green)
+&nbsp;![local-only](https://img.shields.io/badge/network-zero%20egress-success)
+
+**One window over every running Claude Code session — and an honest ring per repo
+that won't pretend work is done when it isn't.** 100% local; nothing leaves your
+machine.
+
 See, supervise, and inspect every running Claude Code session from one window —
 the live table, what each session has in its head, which files it touched, and how
 its work connects to your Obsidian vault.
@@ -92,3 +101,9 @@ detail until Fleet catches up, but it will not crash. Issues and PRs welcome.
 | `FLEET_CLAUDE_DIR` | Override `~/.claude` (default) |
 | `FLEET_VAULT_DIR` | Your Obsidian vault root (enables the VAULT WEB tab) |
 | `FLEET_OBSIDIAN_JSON` | Override the Obsidian registry path |
+| `FLEET_PROJECTS_JSON` | Mission Control project pins (`{slug: repo_path}`); defaults to your per-OS config dir |
+
+## License & credits
+
+MIT — see [`LICENSE`](LICENSE). Built by [Dogma Labs](https://github.com/DogmaLabsTech).
+Contributions welcome; please open an issue or PR.

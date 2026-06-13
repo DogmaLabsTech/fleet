@@ -6,14 +6,19 @@ itself, and this script's denylist literal) for tokens that must never ship."""
 import sys
 from pathlib import Path
 
+# Tokens that must never ship. Multi-word internal names are listed in every
+# spelling that could appear (underscore / space / joined) — a space-variant
+# slipping past the underscore token is exactly how "Kitchen Compass" leaked
+# once. We deliberately do NOT blind-normalize: that would flag the intentional
+# "Dogma Labs" attribution and common phrases (e.g. "paper trail").
 DENYLIST = [
     r"C:\HUB",
-    "DogmaLabs_OS",
+    "DogmaLabs_OS", "DogmaLabs OS",
     "dogmalabs",
     "Benny",
     "Knowledge",
-    "Kitchen_Compass",
-    "TitanTamers",
+    "Kitchen_Compass", "Kitchen Compass", "KitchenCompass",
+    "TitanTamers", "Titan Tamers",
     "PaperTrail",
 ]
 ROOT = Path(__file__).resolve().parent.parent
