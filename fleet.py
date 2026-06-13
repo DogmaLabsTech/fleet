@@ -52,7 +52,7 @@ def init_repo(repo="."):
 
 # ---------------------------------------------------------------- vault scaffold (fleet init-vault)
 
-VAULT_SKELETON = Path(__file__).resolve().parent / "vault_skeleton"
+VAULT_SKELETON = Path(__file__).resolve().parent / "engine" / "vault_skeleton"
 
 
 def _obsidian_status():
@@ -72,7 +72,7 @@ def scaffold_vault(dest=".", open_after=False):
     Ships zero third-party code; the self-building engine is a plugin the adopter
     installs separately (printed below)."""
     dest = Path(dest)
-    written, skipped, sidecar_written = [], [], False
+    written, skipped, adopter_claude = [], [], False
     for src in sorted(VAULT_SKELETON.rglob("*")):
         if not src.is_file():
             continue
@@ -86,6 +86,7 @@ def scaffold_vault(dest=".", open_after=False):
             if target.read_text(encoding="utf-8") == content:
                 skipped.append("CLAUDE.md")
                 continue
+            adopter_claude = True
             target = dest / "wiki" / "_vault-contract.md"
         if target.exists():
             skipped.append(target.relative_to(dest).as_posix())
@@ -93,11 +94,9 @@ def scaffold_vault(dest=".", open_after=False):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         written.append(target.relative_to(dest).as_posix())
-        if is_claude and target.name == "_vault-contract.md":
-            sidecar_written = True
 
     print(f"Vault scaffolded at {dest}  ({len(written)} written, {len(skipped)} skipped).")
-    if sidecar_written:
+    if adopter_claude:
         print("  note: you already have a CLAUDE.md - merge the routing block from "
               "wiki/_vault-contract.md")
     print("Your AI is now pointed at it: run `claude` here and it will use wiki/ as memory.")
@@ -110,7 +109,7 @@ def scaffold_vault(dest=".", open_after=False):
         try:
             from engine import oscompat
             oscompat.open_in_os(str(dest.resolve()))
-        except OSError:
+        except Exception:
             pass
 
 # ---------------------------------------------------------------- ANSI / Windows console

@@ -1,0 +1,3 @@
+# Ship the vault skeleton (incl. dotfiles like .gitignore / .obsidian / .raw) inside
+# the wheel and sdist. `graft` is dotfile-inclusive; glob package-data is not.
+graft engine/vault_skeleton
