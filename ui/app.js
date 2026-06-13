@@ -1,0 +1,540 @@
+"use strict";
+const $ = id => document.getElementById(id);
+const state = { view: "mission", sessions: [], stopped: [], counts: { live: 0, busy: 0, waiting: 0, idle: 0 },
+  selected: null, tabBySession: {}, detail: null, graphNodes: null, graphKey: null,
+  projects: [], spawns: [], project: null, confirmYes: null };
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function fmtAge(s) { if (s < 60) return s + "s"; const m = Math.floor(s / 60); if (m < 60) return m + "m"; return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") + "m"; }
+function fmtTs(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return isNaN(d) ? String(ts).slice(11, 19) : d.toLocaleTimeString("en-GB", { hour12: false });
+}
+function shortModel(m) { return (m || "?").replace(/^claude-/, ""); }
+function areaOf(p) {
+  p = p || "";
+  if (/^C:\\HUB\\Knowledge\\/i.test(p)) return "Knowledge";
+  if (/^C:\\HUB\\DogmaLabs_OS\\/i.test(p)) return "DogmaLabs_OS";
+  const st = /^C:\\HUB\\Studio\\(?:Projects\\)?([^\\]+)\\/i.exec(p);
+  if (st) return "Studio/" + st[1];
+  return "other";
+}
+function toast(msg, ok) { const t = el("div", "toast" + (ok ? "" : " err"), msg); $("toasts").appendChild(t); setTimeout(() => t.remove(), 4500); }
+async function post(payload) {
+  try { const r = await fetch("/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const d = await r.json(); toast(d.message, d.ok); return d; }
+  catch (e) { toast("action failed: " + e, false); return { ok: false }; }
+}
+
+/* ---------- confirm modal (shared by kill + spawn) ---------- */
+function askConfirm(text, yesLabel, danger, onYes) {
+  $("confirm-text").textContent = text;
+  const yes = $("confirm-yes");
+  yes.textContent = yesLabel;
+  yes.classList.toggle("danger", !!danger);
+  state.confirmYes = onYes;
+  $("confirm").hidden = false;
+}
+
+/* ---------- view switch ---------- */
+function showView(v) {
+  state.view = v;
+  $("mission").hidden = v !== "mission";
+  $("shell").hidden = v !== "sessions";
+  if (v === "mission") refreshProjects();
+  if (v === "sessions") refreshDetail();
+}
+
+/* ================= MISSION CONTROL ================= */
+const SVGNS = "http://www.w3.org/2000/svg";
+function ring(percent, source, size, split) {
+  size = size || 76;
+  const r = size / 2 - 8;
+  const tracked = source === "vault" || source === "manifest";
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.setAttribute("class", "ring " + (tracked ? "ring-tracked" : "ring-derived"));
+  svg.setAttribute("role", "img");
+  svg.style.width = svg.style.height = size + "px";
+  const circle = cls => { const ci = document.createElementNS(SVGNS, "circle"); ci.setAttribute("cx", size / 2); ci.setAttribute("cy", size / 2); ci.setAttribute("r", r.toFixed(2)); ci.setAttribute("class", cls); return ci; };
+  svg.appendChild(circle("ring-track"));
+  let label = `${percent}% complete (${source})`;
+  const seg = split && (split.verified || split.attested || split.in_progress);
+  if (tracked && seg) {
+    // two-tone honesty arc: bright verified → dim attested → faint in-progress,
+    // each rotated to start where the previous left off (top = 12 o'clock origin)
+    let cursor = 0;
+    [["seg-verified", split.verified], ["seg-attested", split.attested], ["seg-inprog", split.in_progress]]
+      .forEach(([cls, val]) => {
+        if (val <= 0) return;
+        const arc = circle("ring-prog " + cls);
+        arc.setAttribute("pathLength", "100");
+        arc.setAttribute("stroke-dasharray", val + " " + (100 - val));
+        arc.style.transform = `rotate(${(cursor * 3.6 - 90).toFixed(2)}deg)`;
+        svg.appendChild(arc);
+        cursor += val;
+      });
+    label = `${percent}% — ${split.verified}% verified, ${split.attested}% attested`
+      + (split.in_progress ? `, ${split.in_progress}% in progress` : "");
+  } else {
+    const c = 2 * Math.PI * r;
+    const prog = circle("ring-prog");
+    prog.setAttribute("stroke-dasharray", c.toFixed(2));
+    prog.setAttribute("stroke-dashoffset", (c * (1 - Math.max(0, Math.min(100, percent)) / 100)).toFixed(2));
+    svg.appendChild(prog);
+  }
+  svg.setAttribute("aria-label", label);
+  const t = document.createElementNS(SVGNS, "text");
+  t.setAttribute("x", size / 2); t.setAttribute("y", size / 2); t.setAttribute("class", "ring-num");
+  t.textContent = percent + "%";
+  svg.appendChild(t);
+  return svg;
+}
+function badge(text, kind) { return el("span", "pbadge pb-" + (kind || "x"), text); }
+
+function actBtn(label, action, p, verb) {
+  const b = el("button", "pc-btn pcb-" + action.replace("spawn-", ""), label);
+  b.onclick = e => { e.stopPropagation(); spawnConfirm(p, action, verb); };
+  return b;
+}
+function spawnConfirm(p, action, verb) {
+  const cmd = action === "spawn-visual-sweep" ? "/visual-sweep " + p.slug
+    : action === "spawn-relay" ? "/relay" : "the " + p.slug + " agent";
+  askConfirm(`${verb} on “${p.title}”?  Launches ${cmd} — this opens a Claude session and may take time and tokens.`,
+    "Launch", false, async () => { await post({ action, slug: p.slug }); state.spawns = state.spawns || []; setTimeout(refreshSpawns, 800); });
+}
+
+function projectCard(p) {
+  const card = el("div", "pcard" + (p.team.sessions ? " active" : "") + (p.team.waiting ? " needs-you" : ""));
+  const tracked = p.progress.source === "vault" || p.progress.source === "manifest";
+  card.appendChild(ring(p.progress.percent, p.progress.source, 76, p.progress.split));
+  const body = el("div", "pc-body");
+  const top = el("div", "pc-top");
+  top.appendChild(el("span", "pc-title", p.title));
+  top.appendChild(el("span", "pc-src " + (tracked ? "src-tracked" : "src-derived dim"),
+    tracked ? "✓ tracked" : "~ derived"));
+  body.appendChild(top);
+  const badges = el("div", "pc-badges");
+  if (p.team.waiting) badges.appendChild(badge("⚠ needs you", "waiting"));
+  const fl = p.progress.flags || {};
+  if (fl.contradicted) badges.appendChild(badge("⚠ " + fl.contradicted + " contradicted", "contradicted"));
+  if (fl.uncited) badges.appendChild(badge("◌ " + fl.uncited + " uncited", "uncited"));
+  if (p.team.sessions) badges.appendChild(badge(p.team.sessions + (p.team.sessions > 1 ? " sessions" : " session"), p.team.busy ? "busy" : "idle"));
+  if (p.team.relay_active) badges.appendChild(badge("relay", "relay"));
+  if (p.team.crew_batch) badges.appendChild(badge("crew: " + p.team.crew_batch, "crew"));
+  if (p.team.active_goal) badges.appendChild(badge(p.team.active_goal, "goal"));
+  if (p.visual.score != null) badges.appendChild(badge(p.visual.score + "/20", "visual"));
+  body.appendChild(badges);
+  const acts = el("div", "pc-acts");
+  acts.appendChild(actBtn("◇ sweep", "spawn-visual-sweep", p, "Run visual-sweep"));
+  if (p.has_agent) acts.appendChild(actBtn("➤ dispatch", "spawn-agent", p, "Dispatch agent"));
+  acts.appendChild(actBtn("⇶ relay", "spawn-relay", p, "Start relay"));
+  body.appendChild(acts);
+  card.appendChild(body);
+  card.onclick = e => { if (!e.target.closest(".pc-acts")) openProject(p.slug); };
+  return card;
+}
+
+let _missionSig = null;
+function renderMission() {
+  const ps = state.projects, c = state.counts;
+  const waiting = ps.reduce((s, p) => s + (p.team.waiting || 0), 0);
+  // header synthesis: lead with "is the fleet okay?" — waiting-on-you first
+  const tracked = ps.filter(p => p.progress.source === "vault" || p.progress.source === "manifest").length;
+  const uncited = ps.reduce((s, p) => s + ((p.progress.flags || {}).uncited || 0), 0);
+  const avg = ps.length ? Math.round(ps.reduce((s, p) => s + p.progress.percent, 0) / ps.length) : 0;
+  const active = ps.filter(p => p.team.sessions).length;
+  $("mission-counts").textContent = (waiting ? `⚠ ${waiting} waiting on you · ` : "") +
+    `${ps.length} repos · avg ${avg}% to done · ${active} active · ${tracked} tracked` +
+    (uncited ? ` · ${uncited} uncited` : "") + (c.busy ? ` · ${c.busy} busy` : "");
+  $("mission-counts").classList.toggle("alert", waiting > 0);
+  // re-render the grid only when the data actually changed (no hover/flicker churn)
+  const sig = JSON.stringify(ps);
+  if (sig === _missionSig && $("project-grid").children.length) return;
+  _missionSig = sig;
+  $("project-grid").replaceChildren(...ps.map(projectCard));
+}
+
+/* ---------- project drawer ---------- */
+const _CONF = { verified: ["◉", "verified by an independent artifact"],
+  attested: ["◯", "attested with a provenance citation"],
+  uncited: ["◌", "marked done with no provenance — unverified"],
+  contradicted: ["⚠", "an independent signal disagrees with this status"] };
+function milestoneRow(m) {
+  const row = el("div", "ms-row ms-" + (m.status || "todo"));
+  row.appendChild(el("span", "ms-dot"));
+  const main = el("div", "ms-main");
+  const head = el("div", "ms-head");
+  const conf = _CONF[m.confidence];
+  if (conf) { const g = el("span", "ms-conf mc-" + m.confidence, conf[0]); g.title = conf[1]; head.appendChild(g); }
+  head.appendChild(el("span", "ms-label", m.label || m.id));
+  head.appendChild(el("span", "ms-status", m.status || "todo"));
+  if (m.weight) head.appendChild(el("span", "ms-weight dim", "w" + m.weight));
+  main.appendChild(head);
+  if (m.criteria) main.appendChild(el("div", "ms-crit dim", m.criteria));
+  if (m.provenance) main.appendChild(el("div", "ms-prov", m.provenance));
+  row.appendChild(main);
+  return row;
+}
+function drawerSession(s) {
+  const r = el("div", "dr-sess");
+  r.appendChild(el("span", "dot " + s.status));
+  r.appendChild(el("span", "drs-title", s.title || s.activity || s.session_id));
+  r.appendChild(el("span", "drs-go", "open →"));
+  r.onclick = () => { closeDrawer(); showView("sessions"); select(s.session_id); };
+  return r;
+}
+function renderDrawer(d) {
+  $("dr-ring").replaceChildren(ring(d.progress.percent, d.progress.source, 64, d.progress.split));
+  $("dr-title").textContent = d.title;
+  const bits = [(d.progress.source === "vault" || d.progress.source === "manifest") ? "tracked" : "derived"];
+  if (d.team.active_goal) bits.push(d.team.active_goal);
+  if (d.visual.score != null) bits.push("visual " + d.visual.score + "/20" + (d.visual.cleared ? " ✓" : ""));
+  if (d.team.crew_batch) bits.push("crew: " + d.team.crew_batch);
+  $("dr-sub").textContent = bits.join("  ·  ");
+
+  const acts = $("dr-actions"); acts.replaceChildren();
+  const map = { "visual-sweep": ["◇ Run visual-sweep", "spawn-visual-sweep", "Run visual-sweep"],
+    "dispatch-agent": ["➤ Dispatch agent", "spawn-agent", "Dispatch agent"],
+    "relay": ["⇶ Start relay", "spawn-relay", "Start relay"] };
+  (d.actions || []).forEach(a => {
+    const m = map[a]; if (!m) return;
+    const b = el("button", "dr-act", m[0]);
+    b.onclick = () => spawnConfirm({ slug: d.slug, title: d.title }, m[1], m[2]);
+    acts.appendChild(b);
+  });
+
+  const ms = $("dr-milestones"); ms.replaceChildren();
+  if (d.progress.milestones && d.progress.milestones.length) {
+    ms.appendChild(el("h3", null, "milestones → 100%"));
+    d.progress.milestones.forEach(m => ms.appendChild(milestoneRow(m)));
+  } else {
+    ms.appendChild(el("h3", null, "progress (derived — no manifest yet)"));
+    const comp = (d.progress.components && Object.keys(d.progress.components)) || [];
+    ms.appendChild(el("div", "dim ms-empty", comp.length
+      ? "Signals: " + comp.map(k => `${k} ${Math.round(d.progress.components[k] * 100)}%`).join(", ")
+      : "No progress signal yet. Add a .fleet/progress.json to track milestones."));
+  }
+
+  const team = $("dr-team"); team.replaceChildren();
+  team.appendChild(el("h3", null, `team — ${d.team.sessions.length} session${d.team.sessions.length === 1 ? "" : "s"}` + (d.team.relay_active ? " · relay active" : "")));
+  if (d.team.sessions.length) d.team.sessions.forEach(s => team.appendChild(drawerSession(s)));
+  else team.appendChild(el("div", "dim", "no live sessions on this repo"));
+}
+async function openProject(slug) {
+  try {
+    const r = await fetch("/project/" + slug);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.error) return;
+    state.project = d;
+    renderDrawer(d);
+    $("drawer").hidden = false;
+  } catch (e) { /* drawer stays closed */ }
+}
+function closeDrawer() { $("drawer").hidden = true; state.project = null; }
+
+/* ---------- spawn strip ---------- */
+function renderSpawns() {
+  const strip = $("spawn-strip");
+  const live = state.spawns.filter(s => s.status === "running" || s.status === "launched");
+  if (!state.spawns.length) { strip.hidden = true; return; }
+  strip.hidden = false;
+  strip.replaceChildren(el("span", "ss-label dim", live.length ? `${live.length} running` : "recent launches"));
+  state.spawns.slice(0, 8).forEach(s => {
+    const chip = el("span", "ss-chip ss-" + s.status);
+    chip.appendChild(el("span", "ss-act", s.action));
+    chip.appendChild(el("span", "ss-slug", s.slug));
+    chip.appendChild(el("span", "ss-st", s.status));
+    chip.title = "view output";
+    chip.onclick = () => openSpawnLog(s);
+    strip.appendChild(chip);
+  });
+}
+
+/* ---------- spawn log panel ---------- */
+let _logTimer = null, _logName = null;
+function openSpawnLog(s) {
+  if (s.status === "launched") {
+    // terminal lane handed off to a real window; the session shows in the rail
+    toast(`${s.action} for ${s.slug} is running in a terminal — see the session list`, true);
+    showView("sessions");
+    return;
+  }
+  _logName = s.name;
+  $("sl-title").textContent = `${s.action} · ${s.slug} · ${s.status}`;
+  $("spawnlog").hidden = false;
+  refreshLog();
+  clearInterval(_logTimer);
+  _logTimer = setInterval(refreshLog, 2000);
+}
+async function refreshLog() {
+  if (!_logName) return;
+  try {
+    const r = await fetch("/spawn-log/" + encodeURIComponent(_logName));
+    const body = $("sl-body");
+    const pinned = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+    body.textContent = r.ok ? ((await r.json()).log || "(no output yet)") : "(no log captured — terminal lane)";
+    if (pinned) body.scrollTop = body.scrollHeight;
+  } catch (e) { /* keep last */ }
+}
+function closeSpawnLog() { $("spawnlog").hidden = true; clearInterval(_logTimer); _logName = null; }
+async function refreshSpawns() {
+  try {
+    const r = await fetch("/spawns");
+    if (!r.ok) return;
+    state.spawns = (await r.json()).spawns || [];
+    if (state.view === "mission") renderSpawns();
+  } catch (e) { /* ignore */ }
+}
+async function refreshProjects() {
+  try {
+    const r = await fetch("/projects");
+    if (!r.ok) return;
+    state.projects = (await r.json()).projects || [];
+    if (state.view === "mission") renderMission();
+  } catch (e) { $("mission-counts").textContent = "collector offline — retrying"; }
+}
+
+/* ---------- rail ---------- */
+function renderRail() {
+  const list = $("session-list");
+  list.replaceChildren(...state.sessions.map(s => {
+    const c = el("div", "scard " + s.status + (s.session_id === state.selected ? " selected" : ""));
+    const r1 = el("div", "row1");
+    r1.appendChild(el("span", "dot " + s.status));
+    r1.appendChild(el("span", "proj", s.project));
+    r1.appendChild(el("span", "age", fmtAge(s.age_s)));
+    c.appendChild(r1);
+    const now = s.status === "waiting" ? "⚠ " + (s.waiting_for || "waiting on you")
+      : s.status === "busy" ? (s.activity || "working…") : (s.title || s.last_prompt || "");
+    c.appendChild(el("div", "line2", now));
+    c.onclick = () => select(s.session_id);
+    return c;
+  }));
+  const counts = `${state.counts.live} live · ${state.counts.busy} busy` +
+    (state.counts.waiting ? ` · ${state.counts.waiting} waiting` : "") + ` · ${state.counts.idle} idle` +
+    (state.counts.background ? ` · ${state.counts.background} bg` : "");
+  $("counts").textContent = counts;
+  document.title = state.counts.busy ? `● ${state.counts.busy} busy — Fleet` : "Fleet";
+  $("stopped-list").replaceChildren(...state.stopped.slice(0, 5).map(s =>
+    el("div", null, `○ ${s.project} — stopped ${fmtAge(s.age_s)} ago`)));
+}
+
+/* ---------- detail ---------- */
+function select(sid) { state.selected = sid; state.detail = null; state.graphNodes = null; state.graphKey = null; refreshDetail(); renderRail(); }
+function activeTab() { return state.tabBySession[state.selected] || "head"; }
+
+function renderDetailHead(rec) {
+  $("detail-empty").style.display = "none"; $("detail-body").hidden = false;
+  $("d-dot").className = "dot " + rec.status;
+  $("d-project").textContent = rec.project;
+  if (rec.cwd) {
+    $("d-project").title = rec.cwd;
+    $("d-project").onclick = () => post({ action: "open-folder", path: rec.cwd });
+  }
+  $("d-title").textContent = rec.name || rec.title || "";
+  $("d-meta").textContent = `pid ${rec.pid} · ${shortModel(rec.model)} · ${rec.branch || ""} · v${rec.version || "?"} · ${fmtAge(rec.age_s)}`;
+  $("d-copy").onclick = () => navigator.clipboard.writeText(rec.session_id)
+    .then(() => toast("session id copied", true), () => toast("copy failed", false));
+  $("d-kill").onclick = () => {
+    const rec2 = rec;
+    askConfirm(`End session "${rec2.project} — ${rec2.name || rec2.title || rec2.session_id}"` +
+      (rec2.status === "busy" ? " — it is BUSY right now and will lose in-flight work." : "?"),
+      "End session", true, async () => { await post({ action: "kill", pid: rec2.pid, started_at: rec2.started_at }); refreshList(); });
+  };
+}
+
+function fileRow(f, openAs) {
+  const r = el("div", "frow");
+  r.appendChild(el("span", "cnt", f.count + "×"));
+  r.appendChild(el("span", null, f.path));
+  if (openAs) r.onclick = () => post({ action: openAs, path: f.path });
+  else r.style.cursor = "default";
+  return r;
+}
+
+function renderHead(d) {
+  const body = $("tab-head"); body.replaceChildren();
+  const h = d.head;
+  const gauge = el("div", "h-section");
+  gauge.appendChild(el("h3", null, `context — ${h.ctx_tokens ? Math.round(h.ctx_tokens / 1000) + "k" : "?"} / 200k tokens`));
+  const g = el("div", "gauge"); const i = el("i");
+  i.style.width = Math.min(100, (h.ctx_tokens || 0) / 2000) + "%"; g.appendChild(i); gauge.appendChild(g);
+  body.appendChild(gauge);
+  const rules = el("div", "h-section"); rules.appendChild(el("h3", null, "rules in scope (from cwd)"));
+  (h.rules || []).forEach(p => rules.appendChild(fileRow({ path: p, count: "" }, "open-file")));
+  body.appendChild(rules);
+  [["files read", "read"], ["files edited", "edited"], ["files written", "written"], ["searches", "searched"]].forEach(([label, key]) => {
+    const rows = (h.files[key] || []);
+    if (!rows.length) return;
+    const sec = el("div", "h-section");
+    sec.appendChild(el("h3", null, `${label} (${rows.length})`));
+    const byArea = new Map();
+    rows.slice(0, 40).forEach(f => {
+      const a = key === "searched" ? "" : areaOf(f.path);
+      if (!byArea.has(a)) byArea.set(a, []);
+      byArea.get(a).push(f);
+    });
+    for (const [area, group] of byArea) {
+      if (area && byArea.size > 1) sec.appendChild(el("div", "area-label", area));
+      group.forEach(f => sec.appendChild(fileRow(f, key === "searched" ? null : "open-file")));
+    }
+    body.appendChild(sec);
+  });
+  const tools = el("div", "h-section"); tools.appendChild(el("h3", null, "skills · agents · mcp"));
+  (h.skills || []).forEach(s => tools.appendChild(el("span", "chip", s)));
+  (h.agents || []).forEach(a => tools.appendChild(el("span", "chip", `agent:${a.type} — ${a.desc}`)));
+  (h.mcp || []).forEach(m => tools.appendChild(el("span", "chip", "mcp:" + m)));
+  body.appendChild(tools);
+  (h.warnings || []).forEach(w => body.appendChild(el("div", "dim", "⚠ " + w)));
+}
+
+function renderTimeline(d) {
+  const body = $("tab-timeline");
+  const pinned = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+  body.replaceChildren(...d.timeline.map(e => {
+    const row = el("div", "tl-entry tl-" + e.kind);
+    row.appendChild(el("span", "ts", fmtTs(e.ts)));
+    row.appendChild(el("span", "badge", e.kind));
+    row.appendChild(el("span", "txt", e.text));
+    return row;
+  }));
+  const s = state.detail && state.detail.session;
+  if (s && s.status === "busy" && s.activity) {
+    const row = el("div", "tl-entry tl-now");
+    row.appendChild(el("span", "ts", "now"));
+    row.appendChild(el("span", "badge", "now"));
+    row.appendChild(el("span", "txt", s.activity));
+    body.appendChild(row);
+  }
+  if (d.timeline_total > d.timeline.length)
+    body.prepend(el("div", "dim", `… ${d.timeline_total - d.timeline.length} earlier events`));
+  if (pinned) body.scrollTop = body.scrollHeight;
+}
+
+/* ---------- vault graph (canvas force layout) ---------- */
+function renderGraph(g) {
+  const canvas = $("graph"), empty = $("vault-empty");
+  if (!g.nodes.length) {
+    empty.hidden = false;
+    empty.replaceChildren(el("div", null, "this session has not touched any vault pages"));
+    const b = el("button", null, "open vault in Obsidian");
+    b.onclick = () => post({ action: "open-obsidian", rel: "" });
+    empty.appendChild(b);
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); return;
+  }
+  empty.hidden = true;
+  const W = canvas.width = canvas.clientWidth, H = canvas.height = canvas.clientHeight;
+  let fresh = false;
+  if (!state.graphNodes || state.graphKey !== JSON.stringify(g.nodes.map(n => n.id))) {
+    state.graphKey = JSON.stringify(g.nodes.map(n => n.id));
+    state.graphNodes = g.nodes.map((n, i) => ({ ...n,
+      x: W / 2 + (n.kind === "session" ? 0 : Math.cos(i * 2.4) * 120),
+      y: H / 2 + (n.kind === "session" ? 0 : Math.sin(i * 2.4) * 120), vx: 0, vy: 0 }));
+    fresh = true;
+  }
+  const nodes = state.graphNodes, byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  if (fresh) {
+    for (let it = 0; it < 120; it++) {
+      for (const a of nodes) for (const b of nodes) {
+        if (a === b) continue;
+        const dx = a.x - b.x, dy = a.y - b.y, d2 = Math.max(dx * dx + dy * dy, 40);
+        const f = 2200 / d2; a.vx += dx / Math.sqrt(d2) * f; a.vy += dy / Math.sqrt(d2) * f;
+      }
+      for (const e of g.edges) {
+        const a = byId[e.from], b = byId[e.to]; if (!a || !b) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1, f = (d - 110) * 0.02;
+        a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f;
+      }
+      for (const n of nodes) {
+        n.vx += (W / 2 - n.x) * 0.002; n.vy += (H / 2 - n.y) * 0.002;
+        n.x += n.vx *= 0.82; n.y += n.vy *= 0.82;
+        n.x = Math.max(50, Math.min(W - 50, n.x)); n.y = Math.max(30, Math.min(H - 30, n.y));
+      }
+    }
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+  for (const e of g.edges) {
+    const a = byId[e.from], b = byId[e.to]; if (!a || !b) continue;
+    ctx.strokeStyle = e.kind === "edited" ? "#FF8200" : e.kind === "read" ? "#6b6864" : "#2f2d2b";
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.font = "11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  for (const n of nodes) {
+    const r = n.kind === "session" ? 10 : n.kind === "page" ? 7 : 5;
+    ctx.fillStyle = n.kind === "session" ? "#FF8200" : n.touch === "edited" ? "#FF8200" : n.kind === "page" ? "#f4eee5" : "#6b6864";
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = n.kind === "neighbor" ? "#9ca3af" : "#f4eee5";
+    ctx.fillText(n.label, n.x, n.y - r - 5);
+  }
+  canvas.onclick = ev => {
+    const rect = canvas.getBoundingClientRect();
+    const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    const hit = nodes.find(n => (n.x - x) ** 2 + (n.y - y) ** 2 < 18 ** 2 && n.kind !== "session");
+    if (hit) post({ action: "open-obsidian", rel: hit.id });
+  };
+  if (g.overflow) { ctx.textAlign = "left"; ctx.fillStyle = "#9ca3af"; ctx.fillText(`+${g.overflow} more pages not shown`, 12, H - 12); }
+  if (g.warnings && g.warnings.length) { ctx.textAlign = "left"; ctx.fillStyle = "#9ca3af"; ctx.fillText(`⚠ ${g.warnings.length} unreadable page(s)`, 12, 18); }
+}
+
+/* ---------- polling ---------- */
+async function refreshList() {
+  try {
+    const d = await (await fetch("/data")).json();
+    state.sessions = d.sessions; state.stopped = d.stopped_recent; state.counts = d.counts;
+    renderRail();
+    if (state.selected && !d.sessions.concat(d.stopped_recent).some(s => s.session_id === state.selected)) {
+      state.selected = null; $("detail-body").hidden = true; $("detail-empty").style.display = "";
+    }
+  } catch (e) { $("counts").textContent = "collector offline — retrying"; }
+}
+async function refreshDetail() {
+  if (!state.selected) return;
+  const sid = state.selected;
+  try {
+    const r = await fetch("/session/" + sid);
+    if (sid !== state.selected || !r.ok) return;
+    const d = await r.json();
+    if (sid !== state.selected || d.error) return;
+    state.detail = d;
+    renderDetailHead(d.session);
+    const tab = activeTab();
+    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+    $("tab-head").hidden = tab !== "head"; $("tab-vault").hidden = tab !== "vault"; $("tab-timeline").hidden = tab !== "timeline";
+    if (tab === "head") renderHead(d);
+    if (tab === "timeline") renderTimeline(d);
+    if (tab === "vault") {
+      const rv = await fetch("/vault/" + sid);
+      if (sid !== state.selected) return;
+      if (rv.ok) renderGraph(await rv.json());
+    }
+  } catch (e) { /* keep last view; list poll shows offline */ }
+}
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => { state.tabBySession[state.selected] = b.dataset.tab; refreshDetail(); });
+$("to-sessions").onclick = () => showView("sessions");
+$("to-mission").onclick = () => showView("mission");
+$("dr-close").onclick = closeDrawer;
+$("drawer-scrim").onclick = closeDrawer;
+$("sl-close").onclick = closeSpawnLog;
+$("sl-scrim").onclick = closeSpawnLog;
+$("srv-stop").onclick = () => {
+  if (window.confirm("Stop the fleet server? The app/dashboard will go offline."))
+    post({ action: "stop-server" });
+};
+$("confirm-no").onclick = () => { $("confirm").hidden = true; state.confirmYes = null; };
+$("confirm-yes").onclick = async () => {
+  $("confirm").hidden = true;
+  const fn = state.confirmYes; state.confirmYes = null;
+  if (fn) await fn();
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("confirm").hidden) $("confirm-no").click(); else if (!$("spawnlog").hidden) closeSpawnLog(); else if (!$("drawer").hidden) closeDrawer(); } });
+
+function tick() {
+  refreshList();
+  if (state.view === "mission") { refreshProjects(); refreshSpawns(); }
+  if (state.view === "sessions") refreshDetail();
+}
+refreshList(); refreshProjects(); refreshSpawns();
+setInterval(tick, 5000);
