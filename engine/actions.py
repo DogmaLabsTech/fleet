@@ -33,8 +33,8 @@ def kill_session(pid, started_at_ms):
             if _wait_gone(pid, 1):
                 return {"ok": True, "message": f"session pid {pid} force-ended (tree)"}
             return {"ok": False, "message": f"pid {pid} survived taskkill /F"}
-        # POSIX: SIGTERM, grace, then SIGKILL. os.kill(pid, 0) is a safe liveness
-        # probe off-Windows (the Windows hazard where it terminates the target does not apply).
+        # POSIX: SIGTERM, grace, then SIGKILL. Liveness between signals is checked
+        # via _wait_gone (collector.proc_creation_unix_ms / psutil), not os.kill.
         os.kill(pid, signal.SIGTERM)
         if _wait_gone(pid, 3):
             return {"ok": True, "message": f"session pid {pid} ended"}

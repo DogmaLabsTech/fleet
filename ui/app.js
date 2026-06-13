@@ -1,8 +1,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const state = { view: "mission", sessions: [], stopped: [], counts: { live: 0, busy: 0, waiting: 0, idle: 0 },
-  selected: null, tabBySession: {}, detail: null, graphNodes: null, graphKey: null,
-  projects: [], spawns: [], project: null, confirmYes: null };
+const state = { sessions: [], stopped: [], counts: { live: 0, busy: 0, waiting: 0, idle: 0 },
+  selected: null, tabBySession: {}, detail: null, graphNodes: null, graphKey: null, confirmYes: null };
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function fmtAge(s) { if (s < 60) return s + "s"; const m = Math.floor(s / 60); if (m < 60) return m + "m"; return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") + "m"; }
@@ -24,7 +23,7 @@ async function post(payload) {
   catch (e) { toast("action failed: " + e, false); return { ok: false }; }
 }
 
-/* ---------- confirm modal (shared by kill + spawn) ---------- */
+/* ---------- confirm modal (used by end-session) ---------- */
 function askConfirm(text, yesLabel, danger, onYes) {
   $("confirm-text").textContent = text;
   const yes = $("confirm-yes");
@@ -32,266 +31,6 @@ function askConfirm(text, yesLabel, danger, onYes) {
   yes.classList.toggle("danger", !!danger);
   state.confirmYes = onYes;
   $("confirm").hidden = false;
-}
-
-/* ---------- view switch ---------- */
-function showView(v) {
-  state.view = v;
-  $("mission").hidden = v !== "mission";
-  $("shell").hidden = v !== "sessions";
-  if (v === "mission") refreshProjects();
-  if (v === "sessions") refreshDetail();
-}
-
-/* ================= MISSION CONTROL ================= */
-const SVGNS = "http://www.w3.org/2000/svg";
-function ring(percent, source, size, split) {
-  size = size || 76;
-  const r = size / 2 - 8;
-  const tracked = source === "vault" || source === "manifest";
-  const svg = document.createElementNS(SVGNS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
-  svg.setAttribute("class", "ring " + (tracked ? "ring-tracked" : "ring-derived"));
-  svg.setAttribute("role", "img");
-  svg.style.width = svg.style.height = size + "px";
-  const circle = cls => { const ci = document.createElementNS(SVGNS, "circle"); ci.setAttribute("cx", size / 2); ci.setAttribute("cy", size / 2); ci.setAttribute("r", r.toFixed(2)); ci.setAttribute("class", cls); return ci; };
-  svg.appendChild(circle("ring-track"));
-  let label = `${percent}% complete (${source})`;
-  const seg = split && (split.verified || split.attested || split.in_progress);
-  if (tracked && seg) {
-    // two-tone honesty arc: bright verified → dim attested → faint in-progress,
-    // each rotated to start where the previous left off (top = 12 o'clock origin)
-    let cursor = 0;
-    [["seg-verified", split.verified], ["seg-attested", split.attested], ["seg-inprog", split.in_progress]]
-      .forEach(([cls, val]) => {
-        if (val <= 0) return;
-        const arc = circle("ring-prog " + cls);
-        arc.setAttribute("pathLength", "100");
-        arc.setAttribute("stroke-dasharray", val + " " + (100 - val));
-        arc.style.transform = `rotate(${(cursor * 3.6 - 90).toFixed(2)}deg)`;
-        svg.appendChild(arc);
-        cursor += val;
-      });
-    label = `${percent}% — ${split.verified}% verified, ${split.attested}% attested`
-      + (split.in_progress ? `, ${split.in_progress}% in progress` : "");
-  } else {
-    const c = 2 * Math.PI * r;
-    const prog = circle("ring-prog");
-    prog.setAttribute("stroke-dasharray", c.toFixed(2));
-    prog.setAttribute("stroke-dashoffset", (c * (1 - Math.max(0, Math.min(100, percent)) / 100)).toFixed(2));
-    svg.appendChild(prog);
-  }
-  svg.setAttribute("aria-label", label);
-  const t = document.createElementNS(SVGNS, "text");
-  t.setAttribute("x", size / 2); t.setAttribute("y", size / 2); t.setAttribute("class", "ring-num");
-  t.textContent = percent + "%";
-  svg.appendChild(t);
-  return svg;
-}
-function badge(text, kind) { return el("span", "pbadge pb-" + (kind || "x"), text); }
-
-function actBtn(label, action, p, verb) {
-  const b = el("button", "pc-btn pcb-" + action.replace("spawn-", ""), label);
-  b.onclick = e => { e.stopPropagation(); spawnConfirm(p, action, verb); };
-  return b;
-}
-function spawnConfirm(p, action, verb) {
-  const cmd = action === "spawn-visual-sweep" ? "/visual-sweep " + p.slug
-    : action === "spawn-relay" ? "/relay" : "the " + p.slug + " agent";
-  askConfirm(`${verb} on “${p.title}”?  Launches ${cmd} — this opens a Claude session and may take time and tokens.`,
-    "Launch", false, async () => { await post({ action, slug: p.slug }); state.spawns = state.spawns || []; setTimeout(refreshSpawns, 800); });
-}
-
-function projectCard(p) {
-  const card = el("div", "pcard" + (p.team.sessions ? " active" : "") + (p.team.waiting ? " needs-you" : ""));
-  const tracked = p.progress.source === "vault" || p.progress.source === "manifest";
-  card.appendChild(ring(p.progress.percent, p.progress.source, 76, p.progress.split));
-  const body = el("div", "pc-body");
-  const top = el("div", "pc-top");
-  top.appendChild(el("span", "pc-title", p.title));
-  top.appendChild(el("span", "pc-src " + (tracked ? "src-tracked" : "src-derived dim"),
-    tracked ? "✓ tracked" : "~ derived"));
-  body.appendChild(top);
-  const badges = el("div", "pc-badges");
-  if (p.team.waiting) badges.appendChild(badge("⚠ needs you", "waiting"));
-  const fl = p.progress.flags || {};
-  if (fl.contradicted) badges.appendChild(badge("⚠ " + fl.contradicted + " contradicted", "contradicted"));
-  if (fl.uncited) badges.appendChild(badge("◌ " + fl.uncited + " uncited", "uncited"));
-  if (p.team.sessions) badges.appendChild(badge(p.team.sessions + (p.team.sessions > 1 ? " sessions" : " session"), p.team.busy ? "busy" : "idle"));
-  if (p.team.relay_active) badges.appendChild(badge("relay", "relay"));
-  if (p.team.crew_batch) badges.appendChild(badge("crew: " + p.team.crew_batch, "crew"));
-  if (p.team.active_goal) badges.appendChild(badge(p.team.active_goal, "goal"));
-  if (p.visual.score != null) badges.appendChild(badge(p.visual.score + "/20", "visual"));
-  body.appendChild(badges);
-  const acts = el("div", "pc-acts");
-  acts.appendChild(actBtn("◇ sweep", "spawn-visual-sweep", p, "Run visual-sweep"));
-  if (p.has_agent) acts.appendChild(actBtn("➤ dispatch", "spawn-agent", p, "Dispatch agent"));
-  acts.appendChild(actBtn("⇶ relay", "spawn-relay", p, "Start relay"));
-  body.appendChild(acts);
-  card.appendChild(body);
-  card.onclick = e => { if (!e.target.closest(".pc-acts")) openProject(p.slug); };
-  return card;
-}
-
-let _missionSig = null;
-function renderMission() {
-  const ps = state.projects, c = state.counts;
-  const waiting = ps.reduce((s, p) => s + (p.team.waiting || 0), 0);
-  // header synthesis: lead with "is the fleet okay?" — waiting-on-you first
-  const tracked = ps.filter(p => p.progress.source === "vault" || p.progress.source === "manifest").length;
-  const uncited = ps.reduce((s, p) => s + ((p.progress.flags || {}).uncited || 0), 0);
-  const avg = ps.length ? Math.round(ps.reduce((s, p) => s + p.progress.percent, 0) / ps.length) : 0;
-  const active = ps.filter(p => p.team.sessions).length;
-  $("mission-counts").textContent = (waiting ? `⚠ ${waiting} waiting on you · ` : "") +
-    `${ps.length} repos · avg ${avg}% to done · ${active} active · ${tracked} tracked` +
-    (uncited ? ` · ${uncited} uncited` : "") + (c.busy ? ` · ${c.busy} busy` : "");
-  $("mission-counts").classList.toggle("alert", waiting > 0);
-  // re-render the grid only when the data actually changed (no hover/flicker churn)
-  const sig = JSON.stringify(ps);
-  if (sig === _missionSig && $("project-grid").children.length) return;
-  _missionSig = sig;
-  $("project-grid").replaceChildren(...ps.map(projectCard));
-}
-
-/* ---------- project drawer ---------- */
-const _CONF = { verified: ["◉", "verified by an independent artifact"],
-  attested: ["◯", "attested with a provenance citation"],
-  uncited: ["◌", "marked done with no provenance — unverified"],
-  contradicted: ["⚠", "an independent signal disagrees with this status"] };
-function milestoneRow(m) {
-  const row = el("div", "ms-row ms-" + (m.status || "todo"));
-  row.appendChild(el("span", "ms-dot"));
-  const main = el("div", "ms-main");
-  const head = el("div", "ms-head");
-  const conf = _CONF[m.confidence];
-  if (conf) { const g = el("span", "ms-conf mc-" + m.confidence, conf[0]); g.title = conf[1]; head.appendChild(g); }
-  head.appendChild(el("span", "ms-label", m.label || m.id));
-  head.appendChild(el("span", "ms-status", m.status || "todo"));
-  if (m.weight) head.appendChild(el("span", "ms-weight dim", "w" + m.weight));
-  main.appendChild(head);
-  if (m.criteria) main.appendChild(el("div", "ms-crit dim", m.criteria));
-  if (m.provenance) main.appendChild(el("div", "ms-prov", m.provenance));
-  row.appendChild(main);
-  return row;
-}
-function drawerSession(s) {
-  const r = el("div", "dr-sess");
-  r.appendChild(el("span", "dot " + s.status));
-  r.appendChild(el("span", "drs-title", s.title || s.activity || s.session_id));
-  r.appendChild(el("span", "drs-go", "open →"));
-  r.onclick = () => { closeDrawer(); showView("sessions"); select(s.session_id); };
-  return r;
-}
-function renderDrawer(d) {
-  $("dr-ring").replaceChildren(ring(d.progress.percent, d.progress.source, 64, d.progress.split));
-  $("dr-title").textContent = d.title;
-  const bits = [(d.progress.source === "vault" || d.progress.source === "manifest") ? "tracked" : "derived"];
-  if (d.team.active_goal) bits.push(d.team.active_goal);
-  if (d.visual.score != null) bits.push("visual " + d.visual.score + "/20" + (d.visual.cleared ? " ✓" : ""));
-  if (d.team.crew_batch) bits.push("crew: " + d.team.crew_batch);
-  $("dr-sub").textContent = bits.join("  ·  ");
-
-  const acts = $("dr-actions"); acts.replaceChildren();
-  const map = { "visual-sweep": ["◇ Run visual-sweep", "spawn-visual-sweep", "Run visual-sweep"],
-    "dispatch-agent": ["➤ Dispatch agent", "spawn-agent", "Dispatch agent"],
-    "relay": ["⇶ Start relay", "spawn-relay", "Start relay"] };
-  (d.actions || []).forEach(a => {
-    const m = map[a]; if (!m) return;
-    const b = el("button", "dr-act", m[0]);
-    b.onclick = () => spawnConfirm({ slug: d.slug, title: d.title }, m[1], m[2]);
-    acts.appendChild(b);
-  });
-
-  const ms = $("dr-milestones"); ms.replaceChildren();
-  if (d.progress.milestones && d.progress.milestones.length) {
-    ms.appendChild(el("h3", null, "milestones → 100%"));
-    d.progress.milestones.forEach(m => ms.appendChild(milestoneRow(m)));
-  } else {
-    ms.appendChild(el("h3", null, "progress (derived — no manifest yet)"));
-    const comp = (d.progress.components && Object.keys(d.progress.components)) || [];
-    ms.appendChild(el("div", "dim ms-empty", comp.length
-      ? "Signals: " + comp.map(k => `${k} ${Math.round(d.progress.components[k] * 100)}%`).join(", ")
-      : "No progress signal yet. Add a .fleet/progress.json to track milestones."));
-  }
-
-  const team = $("dr-team"); team.replaceChildren();
-  team.appendChild(el("h3", null, `team — ${d.team.sessions.length} session${d.team.sessions.length === 1 ? "" : "s"}` + (d.team.relay_active ? " · relay active" : "")));
-  if (d.team.sessions.length) d.team.sessions.forEach(s => team.appendChild(drawerSession(s)));
-  else team.appendChild(el("div", "dim", "no live sessions on this repo"));
-}
-async function openProject(slug) {
-  try {
-    const r = await fetch("/project/" + slug);
-    if (!r.ok) return;
-    const d = await r.json();
-    if (d.error) return;
-    state.project = d;
-    renderDrawer(d);
-    $("drawer").hidden = false;
-  } catch (e) { /* drawer stays closed */ }
-}
-function closeDrawer() { $("drawer").hidden = true; state.project = null; }
-
-/* ---------- spawn strip ---------- */
-function renderSpawns() {
-  const strip = $("spawn-strip");
-  const live = state.spawns.filter(s => s.status === "running" || s.status === "launched");
-  if (!state.spawns.length) { strip.hidden = true; return; }
-  strip.hidden = false;
-  strip.replaceChildren(el("span", "ss-label dim", live.length ? `${live.length} running` : "recent launches"));
-  state.spawns.slice(0, 8).forEach(s => {
-    const chip = el("span", "ss-chip ss-" + s.status);
-    chip.appendChild(el("span", "ss-act", s.action));
-    chip.appendChild(el("span", "ss-slug", s.slug));
-    chip.appendChild(el("span", "ss-st", s.status));
-    chip.title = "view output";
-    chip.onclick = () => openSpawnLog(s);
-    strip.appendChild(chip);
-  });
-}
-
-/* ---------- spawn log panel ---------- */
-let _logTimer = null, _logName = null;
-function openSpawnLog(s) {
-  if (s.status === "launched") {
-    // terminal lane handed off to a real window; the session shows in the rail
-    toast(`${s.action} for ${s.slug} is running in a terminal — see the session list`, true);
-    showView("sessions");
-    return;
-  }
-  _logName = s.name;
-  $("sl-title").textContent = `${s.action} · ${s.slug} · ${s.status}`;
-  $("spawnlog").hidden = false;
-  refreshLog();
-  clearInterval(_logTimer);
-  _logTimer = setInterval(refreshLog, 2000);
-}
-async function refreshLog() {
-  if (!_logName) return;
-  try {
-    const r = await fetch("/spawn-log/" + encodeURIComponent(_logName));
-    const body = $("sl-body");
-    const pinned = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
-    body.textContent = r.ok ? ((await r.json()).log || "(no output yet)") : "(no log captured — terminal lane)";
-    if (pinned) body.scrollTop = body.scrollHeight;
-  } catch (e) { /* keep last */ }
-}
-function closeSpawnLog() { $("spawnlog").hidden = true; clearInterval(_logTimer); _logName = null; }
-async function refreshSpawns() {
-  try {
-    const r = await fetch("/spawns");
-    if (!r.ok) return;
-    state.spawns = (await r.json()).spawns || [];
-    if (state.view === "mission") renderSpawns();
-  } catch (e) { /* ignore */ }
-}
-async function refreshProjects() {
-  try {
-    const r = await fetch("/projects");
-    if (!r.ok) return;
-    state.projects = (await r.json()).projects || [];
-    if (state.view === "mission") renderMission();
-  } catch (e) { $("mission-counts").textContent = "collector offline — retrying"; }
 }
 
 /* ---------- rail ---------- */
@@ -511,12 +250,6 @@ async function refreshDetail() {
   } catch (e) { /* keep last view; list poll shows offline */ }
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => { state.tabBySession[state.selected] = b.dataset.tab; refreshDetail(); });
-$("to-sessions").onclick = () => showView("sessions");
-$("to-mission").onclick = () => showView("mission");
-$("dr-close").onclick = closeDrawer;
-$("drawer-scrim").onclick = closeDrawer;
-$("sl-close").onclick = closeSpawnLog;
-$("sl-scrim").onclick = closeSpawnLog;
 $("srv-stop").onclick = () => {
   if (window.confirm("Stop the fleet server? The app/dashboard will go offline."))
     post({ action: "stop-server" });
@@ -527,12 +260,11 @@ $("confirm-yes").onclick = async () => {
   const fn = state.confirmYes; state.confirmYes = null;
   if (fn) await fn();
 };
-document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("confirm").hidden) $("confirm-no").click(); else if (!$("spawnlog").hidden) closeSpawnLog(); else if (!$("drawer").hidden) closeDrawer(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("confirm").hidden) $("confirm-no").click(); } });
 
 function tick() {
   refreshList();
-  if (state.view === "mission") { refreshProjects(); refreshSpawns(); }
-  if (state.view === "sessions") refreshDetail();
+  refreshDetail();
 }
-refreshList(); refreshProjects(); refreshSpawns();
+refreshList();
 setInterval(tick, 5000);

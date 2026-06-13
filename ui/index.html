@@ -11,47 +11,14 @@
 </head>
 <body>
 
-<!-- ============ MISSION CONTROL (default view) ============ -->
-<div id="mission">
-  <header id="mission-head">
-    <h1>FLEET <span class="mc-sub">Mission Control</span></h1>
-    <div id="mission-counts" class="mono dim">connecting…</div>
-    <button class="theme-toggle" onclick="fleetToggleTheme()" title="Toggle theme">◐</button>
-    <button id="to-sessions" class="switch">SESSIONS &rarr;</button>
-  </header>
-  <div id="ring-legend">
-    <span><b class="lg-verified">◉</b> verified — independent artifact</span>
-    <span><b class="lg-attested">◯</b> attested — provenance cited</span>
-    <span><b class="lg-uncited">◌</b> uncited — no receipt</span>
-  </div>
-  <div id="spawn-strip" hidden></div>
-  <div id="project-grid"></div>
-</div>
-
-<!-- project drawer: milestones + team for one repo -->
-<div id="drawer" hidden>
-  <div id="drawer-scrim"></div>
-  <aside id="drawer-panel">
-    <header id="drawer-head">
-      <div id="dr-ring"></div>
-      <div>
-        <div id="dr-title"></div>
-        <div id="dr-sub" class="mono dim"></div>
-      </div>
-      <button id="dr-close" aria-label="close">&times;</button>
-    </header>
-    <div id="dr-actions"></div>
-    <section id="dr-milestones"></section>
-    <section id="dr-team"></section>
-  </aside>
-</div>
-
-<!-- ============ SESSIONS (the original master–detail) ============ -->
-<div id="shell" hidden>
+<!-- ============ SESSIONS (master–detail session monitor) ============ -->
+<div id="shell">
   <aside id="rail">
     <header id="rail-head">
-      <button id="to-mission" class="switch">&larr; MISSION</button>
-      <h1>Session <b>Fleet</b></h1>
+      <div id="rail-titlebar">
+        <h1>Session <b>Fleet</b></h1>
+        <button class="theme-toggle" onclick="fleetToggleTheme()" title="Toggle theme">◐</button>
+      </div>
       <div id="counts" class="mono dim">connecting…</div>
     </header>
     <div id="session-list"></div>
@@ -86,13 +53,6 @@
   </main>
 </div>
 
-<div id="spawnlog" hidden>
-  <div id="sl-scrim"></div>
-  <div id="sl-box">
-    <header id="sl-head"><span id="sl-title" class="mono"></span><button id="sl-close" aria-label="close">&times;</button></header>
-    <pre id="sl-body" class="mono"></pre>
-  </div>
-</div>
 <div id="toasts"></div>
 <div id="confirm" hidden>
   <div id="confirm-box">
