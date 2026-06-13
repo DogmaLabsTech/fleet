@@ -29,8 +29,16 @@ EXPECTED = {
 
 PREFIX = "engine/vault_skeleton/"
 
+# The dashboard/desktop window are dead without these — and a glob package-data
+# entry silently dropped them on every prior release (binary fonts included).
+UI_PREFIX = "engine/ui/"
+UI_EXPECTED = {
+    "index.html", "app.js", "app.css", "theme.css", "theme.js", "fleet.ico",
+    "fonts/fonts.css", "fonts/inter.woff2",
+}
 
-def test_wheel_ships_vault_skeleton(tmp_path):
+
+def _wheel_names(tmp_path):
     r = subprocess.run(
         [sys.executable, "-m", "pip", "wheel", str(REPO), "--no-deps", "-w", str(tmp_path)],
         capture_output=True, text=True,
@@ -38,7 +46,18 @@ def test_wheel_ships_vault_skeleton(tmp_path):
     assert r.returncode == 0, f"pip wheel failed:\n{r.stdout}\n{r.stderr}"
     wheels = list(tmp_path.glob("fleet_cc-*.whl"))
     assert wheels, "no wheel was produced"
-    names = zipfile.ZipFile(wheels[0]).namelist()
+    return zipfile.ZipFile(wheels[0]).namelist()
+
+
+def test_wheel_ships_vault_skeleton(tmp_path):
+    names = _wheel_names(tmp_path)
     shipped = {n[len(PREFIX):] for n in names if PREFIX in n and n[len(PREFIX):]}
     missing = EXPECTED - shipped
     assert not missing, f"wheel does not ship skeleton files: {sorted(missing)}"
+
+
+def test_wheel_ships_ui_assets(tmp_path):
+    names = _wheel_names(tmp_path)
+    shipped = {n[len(UI_PREFIX):] for n in names if UI_PREFIX in n and n[len(UI_PREFIX):]}
+    missing = UI_EXPECTED - shipped
+    assert not missing, f"wheel does not ship UI assets (fleet dash would be blank): {sorted(missing)}"

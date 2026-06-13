@@ -25,12 +25,17 @@ ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv"}
 SKIP_FILES = {"grep_gate.py"}
 TEXT_SUFFIXES = {".py", ".md", ".toml", ".json", ".html", ".css", ".js", ".yml", ".yaml", ".txt", ".cfg", ".ini"}
+# Extension-less text files have no suffix, so scan them by name too — otherwise a
+# token could hide in a shipped dotfile like .gitignore.
+TEXT_NAMES = {".gitignore", ".gitattributes", "MANIFEST.in", "LICENSE", "CONTRIBUTING"}
 
 
 def main():
     hits = []
     for path in ROOT.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in TEXT_NAMES:
             continue
         if any(part in SKIP_DIRS for part in path.parts) or path.name in SKIP_FILES:
             continue

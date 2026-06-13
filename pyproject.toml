@@ -36,9 +36,6 @@ fleet = "fleet:main"
 [tool.setuptools]
 packages = ["engine"]
 py-modules = ["fleet", "app"]
+# engine/ui and engine/vault_skeleton (incl. dotfiles + binary fonts) ship via
+# `graft` in MANIFEST.in; glob package-data would silently drop dotfiles/binaries.
 include-package-data = true
-
-[tool.setuptools.package-data]
-# vault_skeleton (incl. dotfiles) ships via `graft engine/vault_skeleton` in
-# MANIFEST.in + include-package-data; globs here would silently drop dotfiles.
-"*" = ["ui/*"]
